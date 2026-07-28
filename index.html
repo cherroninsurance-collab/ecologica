@@ -14,14 +14,21 @@
    serif stack with the wide tracking that gives Cinzel its liturgical
    feel.
    ══════════════════════════════════════════════════════════════════ */
+/* Light-on-light glass needs MORE border contrast, not less: the panel
+   edge is the only thing separating it from the sky, so borders go near
+   opaque white and shadows go blue rather than black.                   */
 :root {
-  --void: #020617;
-  --accent: #eab308;          /* rethemed live by the age toggle */
-  --accent-soft: rgba(234,179,8,.30);
-  --accent-text: #fde68a;
-  --indigo: #6366f1;
-  --ink: #e2e8f0;
-  --ink-dim: #94a3b8;
+  --void: #cfe6ff;
+  --accent: #c2870b;          /* rethemed live by the age toggle */
+  --accent-soft: rgba(194,135,11,.34);
+  --accent-text: #92610a;
+  --indigo: #4f46e5;
+  --ink: #16233b;
+  --ink-dim: #4a5c78;
+  --glass-bg: rgba(255,255,255,.55);
+  --glass-bg-hi: rgba(255,255,255,.72);
+  --glass-edge: rgba(255,255,255,.88);
+  --shadow-sky: 0 22px 60px rgba(40,84,150,.22);
   --font-sacred: 'Cinzel', 'Optima', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-ui: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
   --ease-lux: cubic-bezier(.16,1,.3,1);
@@ -30,7 +37,9 @@
 html, body { margin: 0; min-height: 100%; }
 body {
   font-family: var(--font-ui);
-  background: var(--void);
+  /* CSS fallback heavens, in case WebGL is unavailable */
+  background: linear-gradient(180deg, #7db6ec 0%, #b6dbf7 46%, #e9f5ff 100%);
+  background-attachment: fixed;
   color: var(--ink);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -45,22 +54,25 @@ body {
 
 /* ── glassmorphism ────────────────────────────────────────────────── */
 .glass-panel {
-  background: rgba(255,255,255,.015);
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
-  border-top: 1px solid rgba(255,255,255,.14);
-  border-left: 1px solid rgba(255,255,255,.08);
-  border-right: 1px solid rgba(255,255,255,.03);
-  border-bottom: 1px solid rgba(255,255,255,.02);
-  box-shadow: 0 30px 70px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05);
-  transition: background .5s var(--ease-lux), border-color .5s var(--ease-lux),
-              box-shadow .5s var(--ease-lux), transform .5s var(--ease-lux);
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--glass-edge);
+  border-top-color: #fff;
+  box-shadow: var(--shadow-sky), inset 0 1px 0 rgba(255,255,255,.9);
+  /* Snappier than v1: half-second eases felt sluggish to click through. */
+  transition: background .22s var(--ease-lux), border-color .22s var(--ease-lux),
+              box-shadow .22s var(--ease-lux), transform .22s var(--ease-lux);
 }
-.glass-panel:hover {
-  background: rgba(255,255,255,.03);
-  border-top-color: var(--accent-soft);
-  box-shadow: 0 40px 90px rgba(0,0,0,.7), 0 0 30px rgba(234,179,8,.06);
+.glass-panel.clickable { cursor: pointer; }
+.glass-panel.clickable:hover {
+  background: var(--glass-bg-hi);
+  border-color: var(--accent-soft);
+  box-shadow: 0 26px 66px rgba(40,84,150,.26), 0 0 26px rgba(194,135,11,.18),
+              inset 0 1px 0 #fff;
+  transform: translateY(-2px);
 }
+.glass-panel.clickable:active { transform: translateY(0) scale(.994); }
 
 /* ── ambient layers ──────────────────────────────────────────────── */
 @keyframes pulseGlow {
@@ -69,8 +81,8 @@ body {
 }
 #celestial {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background: radial-gradient(circle at 50% 0%,
-    rgba(234,179,8,.18) 0%, rgba(99,102,241,.08) 40%, transparent 70%);
+  background: radial-gradient(circle at 50% -10%,
+    rgba(255,246,214,.30) 0%, rgba(255,236,190,.10) 22%, transparent 52%);
   animation: pulseGlow 10s ease-in-out infinite;
 }
 #canvas-container { position: fixed; inset: 0; z-index: 1; }
@@ -86,7 +98,9 @@ header { display: flex; justify-content: space-between; align-items: center; gap
   box-shadow: 0 0 12px var(--accent); animation: pulseGlow 2.4s ease-in-out infinite;
 }
 .brand h1 { font-size: 20px; letter-spacing: .2em; font-weight: 600;
-  color: #fef3c7; margin: 0; }
+  color: #6b4708; margin: 0; text-shadow: 0 1px 0 rgba(255,255,255,.8); }
+.brand { cursor: pointer; padding: 6px 8px; border-radius: 12px; transition: background .22s; }
+.brand:hover { background: rgba(255,255,255,.45); }
 .header-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .age-toggle { display: flex; padding: 4px; border-radius: 999px; font-size: 12px; font-weight: 500; }
 .age-toggle button {
@@ -94,11 +108,11 @@ header { display: flex; justify-content: space-between; align-items: center; gap
   color: var(--ink-dim); font: 500 12px/1 var(--font-ui); letter-spacing: .06em;
   transition: all .3s var(--ease-lux);
 }
-.age-toggle button.on { background: rgba(255,255,255,.10); color: #fff; }
-.age-toggle button.on.youth { background: rgba(239,68,68,.20); color: #fca5a5; }
+.age-toggle button.on { background: rgba(194,135,11,.20); color: #6b4708; box-shadow: inset 0 0 0 1px rgba(194,135,11,.35); }
+.age-toggle button.on.youth { background: rgba(203,60,60,.18); color: #8c1d1d; box-shadow: inset 0 0 0 1px rgba(203,60,60,.35); }
 .badge {
   padding: 9px 15px; border-radius: 999px; display: flex; align-items: center; gap: 7px;
-  font-size: 11px; letter-spacing: .1em; color: #34d399; font-weight: 500;
+  font-size: 11px; letter-spacing: .1em; color: #0f7a52; font-weight: 600; cursor: pointer;
 }
 .badge svg { width: 12px; height: 12px; }
 
@@ -106,7 +120,12 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 main {
   display: grid; grid-template-columns: 1fr; gap: 26px;
   margin: 34px auto; align-items: center;
+  /* The grid spans the viewport, so it must not swallow clicks aimed at
+     the codex behind it. Only the two side columns take pointer input. */
+  pointer-events: none;
 }
+main .col-left, main .col-right { pointer-events: auto; }
+main .col-mid { pointer-events: none; }
 @media (min-width: 1040px) {
   main { grid-template-columns: repeat(12, 1fr); }
   .col-left  { grid-column: span 4; }
@@ -118,18 +137,19 @@ main {
 
 .scripture-card { padding: 30px; border-radius: 26px; }
 .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .25em;
-  color: var(--accent); font-weight: 600; display: block; margin-bottom: 12px; }
-#scripture-title { font-size: 26px; color: #fef3c7; margin: 0 0 14px; line-height: 1.25; }
-#scripture-text { color: #cbd5e1; font-size: 14.5px; line-height: 1.75; font-weight: 300;
+  color: #8a6108; font-weight: 600; display: block; margin-bottom: 12px; }
+#scripture-title { font-size: 26px; color: #6b4708; margin: 0 0 14px; line-height: 1.25; }
+#scripture-text { color: var(--ink); font-size: 14.5px; line-height: 1.75; font-weight: 300;
   font-style: italic; letter-spacing: .01em; margin: 0; transition: opacity .45s var(--ease-lux); }
 .rule { height: 1px; margin: 24px 0;
-  background: linear-gradient(90deg, transparent, #334155, transparent); }
+  background: linear-gradient(90deg, transparent, rgba(40,84,150,.28), transparent); }
 .card-foot { display: flex; justify-content: space-between; align-items: center;
   font-size: 11.5px; color: var(--ink-dim); letter-spacing: .08em; gap: 10px; }
 .link-btn { background: none; border: 0; cursor: pointer; color: var(--accent-text);
   font: 500 11.5px var(--font-ui); letter-spacing: .08em; display: flex; align-items: center; gap: 5px;
   transition: color .3s; }
-.link-btn:hover { color: #fff; }
+.link-btn:hover { color: #6b4708; }
+.link-btn.playing { color: #8c1d1d; }
 .link-btn svg { width: 14px; height: 14px; }
 
 .module-card {
@@ -140,106 +160,113 @@ main {
 .module-card .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .16em;
   font-weight: 700; color: var(--indigo); }
 .module-card.gold .tag { color: var(--accent); }
-.module-card h3 { font-size: 16.5px; color: #e2e8f0; margin: 5px 0 0;
+.module-card h3 { font-size: 16.5px; color: #16233b; margin: 5px 0 0;
   transition: color .3s; font-family: var(--font-sacred); }
-.module-card:hover h3 { color: #fde68a; }
+.module-card:hover h3 { color: #6b4708; }
 .module-card p { font-size: 12.5px; color: var(--ink-dim); font-weight: 300; margin: 6px 0 0; line-height: 1.5; }
 .chev {
   width: 34px; height: 34px; flex: none; border-radius: 50%;
-  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.65); border: 1px solid rgba(40,84,150,.16);
   display: grid; place-items: center; color: var(--ink-dim);
   transition: all .3s var(--ease-lux);
 }
-.module-card:hover .chev { background: rgba(234,179,8,.10);
-  border-color: var(--accent-soft); color: var(--accent-text); }
+.module-card:hover .chev { background: rgba(194,135,11,.16);
+  border-color: var(--accent-soft); color: var(--accent-text); transform: translateX(2px); }
 .chev svg { width: 16px; height: 16px; }
 
 /* ── footer ───────────────────────────────────────────────────────── */
 footer { display: flex; justify-content: space-between; align-items: center; gap: 16px;
-  flex-wrap: wrap; font-size: 11px; letter-spacing: .14em; color: #64748b;
-  border-top: 1px solid rgba(255,255,255,.05); padding-top: 22px; }
+  flex-wrap: wrap; font-size: 11px; letter-spacing: .14em; color: #3f5a80;
+  border-top: 1px solid rgba(255,255,255,.6); padding-top: 22px; }
 footer nav { display: flex; gap: 24px; flex-wrap: wrap; }
-footer button { background: none; border: 0; cursor: pointer; color: #64748b;
-  font: 400 11px var(--font-ui); letter-spacing: .14em; transition: color .3s; }
-footer button:hover { color: var(--accent-text); }
+footer button { background: none; border: 0; cursor: pointer; color: #3f5a80;
+  font: 600 11px var(--font-ui); letter-spacing: .14em; transition: color .2s;
+  padding: 6px 2px; border-radius: 8px; }
+footer button:hover { color: #6b4708; text-decoration: underline; }
 
 /* ── overlay / module shell ───────────────────────────────────────── */
 #overlay {
   position: fixed; inset: 0; z-index: 60; display: none;
-  background: rgba(2,6,23,.72); backdrop-filter: blur(10px);
+  background: rgba(150,190,235,.55); backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(10px);
   padding: 20px; overflow-y: auto; overscroll-behavior: contain;
 }
-#overlay.open { display: block; animation: fadeIn .4s var(--ease-lux); }
+#overlay.open { display: block; animation: fadeIn .22s var(--ease-lux); }
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
 .sheet {
   max-width: 940px; margin: 24px auto; border-radius: 26px; padding: 28px;
-  animation: riseIn .5s var(--ease-lux);
+  animation: riseIn .3s var(--ease-lux);
 }
-@keyframes riseIn { from { opacity: 0; transform: translateY(22px) } to { opacity: 1; transform: none } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
+@keyframes outOfLight { from { opacity: 0; transform: scale(.86); filter: brightness(2.4) } to { opacity: 1; transform: none; filter: none } }
+.sheet.from-light { animation: outOfLight .62s var(--ease-lux); }
 .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; }
-.sheet-head h2 { font-family: var(--font-sacred); font-size: 25px; color: #fef3c7; margin: 0; line-height: 1.25; }
+.sheet-head h2 { font-family: var(--font-sacred); font-size: 25px; color: #6b4708; margin: 0; line-height: 1.25; }
 .sheet-sub { color: var(--ink-dim); font-size: 13px; font-weight: 300; margin: 8px 0 22px; line-height: 1.6; }
 .close-x {
   flex: none; width: 38px; height: 38px; border-radius: 50%; cursor: pointer;
-  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
-  color: var(--ink); font-size: 19px; line-height: 1; transition: all .3s;
+  background: rgba(255,255,255,.7); border: 1px solid rgba(40,84,150,.2);
+  color: var(--ink); font-size: 19px; line-height: 1; transition: all .2s;
 }
-.close-x:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.4); color: #fca5a5; }
+.close-x:hover { background: rgba(203,60,60,.14); border-color: rgba(203,60,60,.45); color: #8c1d1d; }
 
 .btn {
   padding: 12px 20px; border-radius: 13px; cursor: pointer;
-  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.72); border: 1px solid rgba(40,84,150,.18);
   color: var(--ink); font: 600 13.5px var(--font-ui); letter-spacing: .02em;
-  transition: all .3s var(--ease-lux);
+  transition: all .18s var(--ease-lux); box-shadow: 0 2px 8px rgba(40,84,150,.10);
 }
-.btn:hover { background: rgba(255,255,255,.10); border-color: var(--accent-soft); }
-.btn--gold { background: linear-gradient(180deg, rgba(234,179,8,.26), rgba(234,179,8,.10));
-  border-color: var(--accent-soft); color: #fef3c7; }
+.btn:hover { background: #fff; border-color: var(--accent-soft); transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(.97); }
+.btn--gold { background: linear-gradient(180deg, #ffd98a, #f0b53f);
+  border-color: rgba(146,97,10,.45); color: #4a3005; }
+.btn--gold:hover { background: linear-gradient(180deg, #ffe6ac, #f6c256); }
 .btn:disabled { opacity: .4; cursor: default; }
 
 /* ── games & modules ──────────────────────────────────────────────── */
 .tile-pool { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .tile {
   padding: 11px 15px; border-radius: 12px; cursor: pointer;
-  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
-  color: var(--ink); font: 500 14px var(--font-sacred); transition: all .3s var(--ease-lux);
+  background: rgba(255,255,255,.75); border: 1px solid rgba(40,84,150,.18);
+  color: var(--ink); font: 500 14px var(--font-sacred); transition: all .18s var(--ease-lux);
+  box-shadow: 0 2px 8px rgba(40,84,150,.10);
 }
-.tile:hover { border-color: var(--accent-soft); background: rgba(255,255,255,.08); }
-.tile.used { opacity: .2; pointer-events: none; }
+.tile:hover { border-color: var(--accent-soft); background: #fff; transform: translateY(-2px); }
+.tile.used { opacity: .22; pointer-events: none; }
 .tile.wrong { animation: shakeIt .5s var(--ease-lux); border-color: rgba(239,68,68,.5); }
 @keyframes shakeIt { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 60%{transform:translateX(5px)} }
 .answer-line {
   min-height: 62px; padding: 16px; border-radius: 14px; margin-bottom: 16px;
   border: 1px dashed var(--accent-soft); font-family: var(--font-sacred);
-  font-size: 16px; line-height: 1.7; color: #fef3c7;
+  font-size: 16px; line-height: 1.7; color: #4a3005; background: rgba(255,255,255,.5);
 }
-.answer-line.done { border-style: solid; box-shadow: 0 0 34px rgba(234,179,8,.20); }
+.answer-line.done { border-style: solid; box-shadow: 0 0 34px rgba(194,135,11,.28); background: rgba(255,250,235,.85); }
 .answer-line span { opacity: 0; transition: opacity .5s var(--ease-lux); }
-.answer-line span.lit { opacity: 1; text-shadow: 0 0 14px rgba(234,179,8,.55); }
+.answer-line span.lit { opacity: 1; text-shadow: 0 0 12px rgba(194,135,11,.45); }
 
 .progress-rail { display: flex; gap: 5px; height: 7px; margin: 14px 0 20px; }
-.progress-rail i { flex: 1; border-radius: 4px; background: rgba(255,255,255,.07);
+.progress-rail i { flex: 1; border-radius: 4px; background: rgba(40,84,150,.14);
   transition: background .6s var(--ease-lux), box-shadow .6s var(--ease-lux); }
-.progress-rail i.lit { background: linear-gradient(90deg, var(--accent), #fef3c7);
+.progress-rail i.lit { background: linear-gradient(90deg, #d99a12, #ffd98a);
   box-shadow: 0 0 14px var(--accent-soft); }
 
 .seq-slots { display: flex; flex-wrap: wrap; gap: 9px; min-height: 46px; margin-bottom: 16px; }
 .seq-card {
   padding: 12px 15px; border-radius: 13px; cursor: pointer; text-align: left;
-  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
-  transition: all .3s var(--ease-lux); display: flex; flex-direction: column; gap: 3px;
-  color: var(--ink); font-family: var(--font-ui);
+  background: rgba(255,255,255,.75); border: 1px solid rgba(40,84,150,.18);
+  transition: all .18s var(--ease-lux); display: flex; flex-direction: column; gap: 3px;
+  color: var(--ink); font-family: var(--font-ui); box-shadow: 0 2px 8px rgba(40,84,150,.10);
 }
-.seq-card strong { font: 600 13.5px var(--font-sacred); color: #e2e8f0; }
+.seq-card strong { font: 600 13.5px var(--font-sacred); color: #16233b; }
 .seq-card small { font-size: 11px; color: var(--ink-dim); }
-.seq-card:hover { border-color: var(--accent-soft); }
-.seq-card.placed { border-color: var(--accent-soft); background: rgba(234,179,8,.09); cursor: default; }
+.seq-card:hover { border-color: var(--accent-soft); background: #fff; transform: translateY(-2px); }
+.seq-card.placed { border-color: var(--accent-soft); background: rgba(255,239,199,.9);
+  cursor: default; transform: none; }
 
-.quiz-q { font: 600 15.5px var(--font-ui); color: #fef3c7; margin: 20px 0 12px; line-height: 1.55; }
+.quiz-q { font: 600 15.5px var(--font-ui); color: #16233b; margin: 20px 0 12px; line-height: 1.55; }
 .quiz-opt { display: block; width: 100%; text-align: left; margin-bottom: 9px; }
-.quiz-opt.correct { border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.12); color: #a7f3d0; }
-.quiz-opt.miss { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.10); }
+.quiz-opt.correct { border-color: rgba(15,122,82,.55); background: rgba(15,122,82,.14); color: #0b5c3d; }
+.quiz-opt.miss { border-color: rgba(203,60,60,.5); background: rgba(203,60,60,.12); color: #8c1d1d; }
 .explain { padding: 15px 17px; border-radius: 14px; margin: 12px 0 4px;
   border: 1px solid var(--accent-soft); background: rgba(234,179,8,.07);
   font-size: 13.5px; line-height: 1.65; color: #fde68a; }
@@ -247,38 +274,42 @@ footer button:hover { color: var(--accent-text); }
 
 .result {
   margin-top: 20px; padding: 22px; border-radius: 18px; text-align: center;
-  border: 1px solid var(--accent-soft); background: rgba(234,179,8,.08);
+  border: 1px solid var(--accent-soft); background: rgba(255,248,228,.92);
+  box-shadow: 0 0 40px rgba(194,135,11,.20);
 }
 .result .big { font-size: 34px; }
-.result p { color: #fde68a; font-size: 14px; line-height: 1.65; margin: 10px 0 0; }
+.result p { color: #4a3005; font-size: 14px; line-height: 1.65; margin: 10px 0 0; }
 
 /* book / teaching grids */
 .grid-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .mini-book {
   padding: 15px 13px; border-radius: 13px; cursor: pointer; text-align: center;
-  background: linear-gradient(150deg, rgba(99,102,241,.15), rgba(255,255,255,.02));
-  border: 1px solid rgba(255,255,255,.10); border-left: 3px solid var(--accent-soft);
-  transition: all .35s var(--ease-lux); color: var(--ink);
+  background: linear-gradient(150deg, rgba(99,102,241,.16), rgba(255,255,255,.8));
+  border: 1px solid rgba(40,84,150,.18); border-left: 3px solid var(--accent-soft);
+  transition: all .18s var(--ease-lux); color: var(--ink);
+  box-shadow: 0 3px 12px rgba(40,84,150,.12);
 }
-.mini-book.ot { background: linear-gradient(150deg, rgba(234,179,8,.14), rgba(255,255,255,.02)); }
+.mini-book.ot { background: linear-gradient(150deg, rgba(224,168,40,.22), rgba(255,255,255,.8)); }
 .mini-book:hover { transform: translateY(-3px); border-color: var(--accent-soft);
-  box-shadow: 0 14px 34px rgba(0,0,0,.5), 0 0 22px rgba(234,179,8,.10); }
-.mini-book b { display: block; font: 600 13.5px var(--font-sacred); color: #fef3c7; }
+  box-shadow: 0 14px 30px rgba(40,84,150,.22), 0 0 20px rgba(194,135,11,.18); }
+.mini-book b { display: block; font: 600 13.5px var(--font-sacred); color: #23303f; }
 .mini-book span { font-size: 10.5px; color: var(--ink-dim); letter-spacing: .1em; text-transform: uppercase; }
 
 .detail-block { padding: 17px; border-radius: 15px; margin-top: 12px;
-  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); }
+  background: rgba(255,255,255,.62); border: 1px solid rgba(40,84,150,.14); }
 .detail-block .kind { display: block; font: 700 10.5px var(--font-ui); letter-spacing: .18em;
   text-transform: uppercase; color: var(--accent); margin-bottom: 7px; }
-.detail-block p { margin: 0; font-size: 14px; line-height: 1.7; color: #cbd5e1; }
-.detail-block.christ { border-color: var(--accent-soft); background: rgba(234,179,8,.07); }
-.detail-block.christ p { color: #fde68a; }
+.detail-block p { margin: 0; font-size: 14px; line-height: 1.7; color: var(--ink); }
+.detail-block.christ { border-color: var(--accent-soft); background: rgba(255,246,222,.92); }
+.detail-block.christ p { color: #4a3005; }
 
 .accordion { margin-bottom: 10px; border-radius: 15px; overflow: hidden;
-  border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.025); }
+  border: 1px solid rgba(40,84,150,.14); background: rgba(255,255,255,.62);
+  transition: border-color .18s, background .18s; }
+.accordion:hover { border-color: var(--accent-soft); background: rgba(255,255,255,.8); }
 .accordion > button { width: 100%; text-align: left; padding: 15px 17px; cursor: pointer;
   background: none; border: 0; color: var(--ink); font-family: var(--font-ui); }
-.accordion > button b { display: block; font: 600 14.5px var(--font-sacred); color: #fef3c7; }
+.accordion > button b { display: block; font: 600 14.5px var(--font-sacred); color: #23303f; }
 .accordion > button small { color: var(--ink-dim); font-size: 11.5px; letter-spacing: .06em; }
 .accordion .inner { padding: 0 17px 15px; }
 
@@ -289,25 +320,53 @@ footer button:hover { color: var(--accent-text); }
 .reader-bar { display: flex; gap: 9px; margin-bottom: 16px; align-items: stretch; }
 .reader-bar select {
   flex: 1; min-width: 0; padding: 11px 12px; border-radius: 13px;
-  background: rgba(255,255,255,.05); color: var(--ink);
-  border: 1px solid rgba(255,255,255,.12); font: 600 13.5px var(--font-ui);
+  background: rgba(255,255,255,.85); color: var(--ink);
+  border: 1px solid rgba(40,84,150,.2); font: 600 13.5px var(--font-ui);
   cursor: pointer;
 }
-.reader-bar select option { background: #0b1226; color: var(--ink); }
+.reader-bar select option { background: #fff; color: var(--ink); }
 .reader-bar .btn { flex: none; width: 46px; padding: 0;
   font: 700 22px/1 var(--font-sacred); color: var(--accent-text); }
-.reader-page { max-height: min(60vh, 560px); overflow-y: auto; padding-right: 4px; }
+.reader-page { max-height: min(60vh, 560px); overflow-y: auto; padding: 22px 20px;
+  background: linear-gradient(180deg, #fffdf6, #fff9ec);
+  border: 1px solid rgba(40,84,150,.14); border-radius: 18px;
+  box-shadow: inset 0 2px 14px rgba(120,90,30,.08); }
 .chapter-head { text-align: center; font: 700 13px var(--font-sacred);
-  letter-spacing: .22em; color: var(--accent); margin: 4px 0 18px; }
-.verses { font-family: var(--font-sacred); font-size: 16.5px; line-height: 1.85;
-  color: #e8eefc; max-width: 36em; margin-inline: auto; }
+  letter-spacing: .22em; color: #8a6108; margin: 2px 0 18px; }
+.verses { font-family: var(--font-sacred); font-size: 17px; line-height: 1.88;
+  color: #241d10; max-width: 36em; margin-inline: auto; }
 .verses .vs { cursor: pointer; border-radius: 4px; transition: background .3s; }
-.verses .vs:hover { background: rgba(255,255,255,.05); }
-.verses .vs.lit { background: rgba(234,179,8,.16); box-shadow: 0 0 22px rgba(234,179,8,.14); }
-.verses .vs b { font: 600 10.5px var(--font-ui); vertical-align: super;
-  color: var(--accent); margin-right: .35em; opacity: .85; }
-.copyright-note { font-size: 11px; color: #64748b; text-align: center;
+.verses .vs:hover { background: rgba(194,135,11,.10); }
+.verses .vs.lit { background: rgba(240,181,63,.34); box-shadow: 0 0 18px rgba(194,135,11,.22); }
+.verses .vs b { font: 700 10.5px var(--font-ui); vertical-align: super;
+  color: #a8760c; margin-right: .35em; }
+.copyright-note { font-size: 11px; color: #6d6350; text-align: center;
   margin: 22px auto 4px; max-width: 34em; line-height: 1.6; }
+
+#book-hit {
+  position: fixed; z-index: 15; cursor: pointer; border-radius: 18px;
+  transition: box-shadow .3s var(--ease-lux);
+}
+#book-hit:hover { box-shadow: 0 0 90px 20px rgba(255,240,190,.42); }
+#book-hit:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
+#book-hint {
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+  z-index: 16; pointer-events: none; white-space: nowrap;
+  padding: 9px 18px; border-radius: 999px;
+  background: rgba(255,255,255,.62); border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 8px 26px rgba(40,84,150,.20);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  font: 600 11.5px var(--font-ui); letter-spacing: .16em; text-transform: uppercase;
+  color: #6b4708; animation: hintBreathe 3.4s ease-in-out infinite;
+  transition: opacity .35s var(--ease-lux);
+}
+#book-hint span { color: #c2870b; margin-right: 6px; }
+#book-hint.gone { opacity: 0; }
+@keyframes hintBreathe {
+  0%,100% { opacity: .85; transform: translateX(-50%) translateY(0); }
+  50%     { opacity: 1;   transform: translateX(-50%) translateY(-4px); }
+}
+@media (max-width: 1039px) { #book-hint { bottom: 62px; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -319,9 +378,15 @@ footer button:hover { color: var(--accent-text); }
 <div id="celestial"></div>
 <div id="canvas-container"><canvas id="gl"></canvas></div>
 
+<!-- The floating codex is the primary control: click it to ascend into
+     the reader. The rect is positioned from the shader's camera math. -->
+<div id="book-hit" role="button" tabindex="0"
+     aria-label="Open the Bible and read"></div>
+<div id="book-hint"><span>✦</span> Touch the Word to open it</div>
+
 <!-- ══════════════════════════ HEADER ══════════════════════════ -->
 <header>
-  <div class="brand">
+  <div class="brand" role="button" tabindex="0" title="About ECOLOGIA">
     <div class="brand-dot"></div>
     <h1 class="serif-sacred">ECOLOGIA</h1>
   </div>
@@ -330,7 +395,7 @@ footer button:hover { color: var(--accent-text); }
       <button id="btn-kids" data-age="kids">YOUTH</button>
       <button id="btn-adults" data-age="adults" class="on">ADULT</button>
     </div>
-    <div class="badge glass-panel">
+    <div class="badge glass-panel clickable" role="button" tabindex="0" title="What offline actually means here">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
       OFFLINE ACTIVE
     </div>
@@ -348,12 +413,12 @@ footer button:hover { color: var(--accent-text); }
       <div class="card-foot">
         <span id="translation-label">TRANSLATION: KJV</span>
         <button class="link-btn" id="btn-listen">
-          LISTEN TIMBRE
+          <span id="listen-label">LISTEN TIMBRE</span>
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </button>
       </div>
     </div>
-    <div class="glass-panel module-card" data-module="read">
+    <div class="glass-panel clickable module-card" data-module="read">
       <div>
         <span class="tag" style="color:#34d399">Complete Scripture · Offline</span>
         <h3>Read the Word</h3>
@@ -361,7 +426,7 @@ footer button:hover { color: var(--accent-text); }
       </div>
       <div class="chev"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></div>
     </div>
-    <div class="glass-panel module-card" data-module="books">
+    <div class="glass-panel clickable module-card" data-module="books">
       <div>
         <span class="tag">Canonical Atlas</span>
         <h3>The Sixty-Six</h3>
@@ -374,7 +439,7 @@ footer button:hover { color: var(--accent-text); }
   <div class="col-mid"></div>
 
   <section class="col-right">
-    <div class="glass-panel module-card" id="card1" data-module="">
+    <div class="glass-panel clickable module-card" id="card1" data-module="">
       <div>
         <span class="tag" id="card1-tag">Interactive Chronology</span>
         <h3 id="card1-title">Testament Illuminations</h3>
@@ -382,7 +447,7 @@ footer button:hover { color: var(--accent-text); }
       </div>
       <div class="chev"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></div>
     </div>
-    <div class="glass-panel module-card gold" id="card2" data-module="">
+    <div class="glass-panel clickable module-card gold" id="card2" data-module="">
       <div>
         <span class="tag" id="card2-tag">Scripture Quest Engine</span>
         <h3 id="card2-title">Exegesis Training</h3>
@@ -390,7 +455,7 @@ footer button:hover { color: var(--accent-text); }
       </div>
       <div class="chev"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></div>
     </div>
-    <div class="glass-panel module-card" id="card3" data-module="">
+    <div class="glass-panel clickable module-card" id="card3" data-module="">
       <div>
         <span class="tag" id="card3-tag">Word Made Flesh</span>
         <h3 id="card3-title">The Teachings of Jesus</h3>
@@ -488,6 +553,8 @@ uniform float uTime;
 uniform vec2  uMouse;      // smoothed parallax, -1..1
 uniform vec3  uAccent;     // theme accent (age toggle rethemes this)
 uniform float uOpen;       // 0..1 book opening amount
+uniform float uZoom;       // 0..1 ascension dolly toward the codex
+uniform float uBloom;      // 0..1 whiteout at the peak of the ascension
 
 const float PI = 3.14159265;
 
@@ -529,24 +596,85 @@ vec3 calcNormal(vec3 p){
     e.yxy * mapBook(p + e.yxy) + e.xxx * mapBook(p + e.xxx));
 }
 
-/* Heaven above: the single light source of the whole composition. */
+/* Authored colours are picked in display space; the pipeline ends with an
+   ACES curve and a 1/2.2 gamma, so they must be linearised on the way in.
+   Skipping this is what washed the sky out to near-white.               */
+vec3 sRGB(vec3 c){ return pow(max(c, 0.0), vec3(2.2)); }
+
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; }
+  return v;
+}
+
+/* Sunlit cumulus on an altitude plane. Lower banks drift faster than high
+   cirrus, which gives the sky real parallax as the codex breathes.       */
+float cloudLayer(vec3 d, float height, float scale, float drift, float t){
+  if (d.y < 0.02) return 0.0;
+  vec2 p = (d.xz * (height / d.y)) * scale + vec2(t * drift, t * drift * 0.35);
+  float f = fbm(p);
+  return smoothstep(0.60, 0.97, f) * smoothstep(0.02, 0.20, d.y);
+}
+
+/* Heaven's gates, drawn in direction space so they stand behind everything
+   and refract through the codex. Luminous field glow rather than solid
+   geometry — they should read as light, not architecture.
+   "and its gates will never be shut by day — and there will be no night
+   there." (Revelation 21:25)                                             */
+float sdSeg(vec2 p, vec2 a, vec2 b){
+  vec2 pa = p - a, ba = b - a;
+  return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+}
+float gateField(vec2 q){
+  const float SPAN = 0.46, SPRING = 0.02, FOOT = -0.55;
+  float pillarL = sdSeg(q, vec2(-SPAN, FOOT), vec2(-SPAN, SPRING)) - 0.022;
+  float pillarR = sdSeg(q, vec2( SPAN, FOOT), vec2( SPAN, SPRING)) - 0.022;
+  // semicircular arch springing from the pillar tops
+  vec2 ac = q - vec2(0.0, SPRING);
+  float arch = ac.y >= 0.0 ? abs(length(ac) - SPAN) - 0.018 : 1e3;
+  float d = min(min(pillarL, pillarR), arch);
+  // railings between the pillars, each stopping under the arch
+  for (int i = 1; i < 7; i++){
+    float x = -SPAN + float(i) * (2.0 * SPAN / 7.0);
+    float top = SPRING + sqrt(max(SPAN * SPAN - x * x, 0.0));
+    d = min(d, sdSeg(q, vec2(x, FOOT), vec2(x, top * 0.93)) - 0.007);
+  }
+  return d;
+}
+
+/* The heavens: bright blue sky, sunlit cloud banks, and the open gates. */
 vec3 env(vec3 d){
-  float y = d.y * 0.5 + 0.5;
-  vec3 c = mix(vec3(0.008,0.014,0.033), vec3(0.045,0.062,0.128), y);
-  vec3 L = normalize(vec3(0.0, 1.0, 0.42));
-  float core = pow(max(dot(d, L), 0.0), 42.0);
-  float halo = pow(max(dot(d, L), 0.0), 4.0);
-  c += uAccent * (core * 2.6 + halo * 0.10);
-  c += vec3(0.38,0.40,0.98) * pow(max(dot(d, normalize(vec3(-0.7,-0.3,0.6))),0.0), 6.0) * 0.09;
-  // distant stars — placed WITHIN each cell, else hashing floored coords
-  // paints whole cells and the sky turns into a checkerboard of squares.
-  vec2 sv = d.xy / max(abs(d.z), 0.35) * 9.0;
-  vec2 cell = floor(sv);
-  vec2 f = fract(sv) - 0.5;
-  vec2 jitter = (vec2(hash(cell), hash(cell + 41.7)) - 0.5) * 0.7;
-  float star = smoothstep(0.055, 0.0, length(f - jitter))
-             * step(0.82, hash(cell + 7.1));      // only ~18% of cells hold one
-  c += vec3(0.85, 0.88, 1.0) * star * 0.5 * smoothstep(0.05, 0.5, y);
+  // The sun must sit in the hemisphere the rays actually travel toward
+  // (-z), or it never appears in frame and the clouds lose their rim.
+  vec3 L = normalize(vec3(0.06, 0.58, -0.81));
+  float y = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
+
+  // sky gradient — light blue at the horizon, deep blue toward the zenith
+  vec3 c = mix(sRGB(vec3(0.62, 0.80, 0.95)),
+               sRGB(vec3(0.13, 0.38, 0.80)), pow(y, 0.55));
+
+  // the sun, high and central
+  float sd = max(dot(d, L), 0.0);
+  c += sRGB(vec3(1.00, 0.98, 0.92)) * pow(sd, 320.0) * 4.0;
+  c += sRGB(vec3(1.00, 0.94, 0.80)) * pow(sd, 22.0) * 0.55;
+
+  // the gates, standing open behind everything
+  if (d.z < -0.05){
+    vec2 q = d.xy / (-d.z) * 1.9;
+    float g = max(gateField(q), 0.0);
+    c += sRGB(vec3(1.00, 0.99, 0.95)) * exp(-g * 20.0) * 2.10;
+    c += sRGB(vec3(1.00, 0.86, 0.52)) * exp(-g * 5.0) * 0.55;
+  }
+
+  // cloud banks, gold-rimmed on the sunward edge
+  float hi = cloudLayer(d, 5.5, 0.35, 0.05, uTime);
+  float lo = cloudLayer(d, 2.4, 0.62, 0.14, uTime);
+  float cl = clamp(hi * 0.45 + lo * 0.65, 0.0, 1.0);
+  vec3 cloudCol = mix(sRGB(vec3(1.00, 1.00, 1.00)),
+                      sRGB(vec3(1.00, 0.96, 0.86)), pow(sd, 2.0));
+  c = mix(c, cloudCol, cl * 0.80);
+  c += sRGB(vec3(1.00, 0.88, 0.62)) * cl * pow(sd, 3.0) * 0.30;   // sunward rim
+
   return c;
 }
 
@@ -573,7 +701,7 @@ vec3 glassChannel(vec3 pos, vec3 N, vec3 rd, float ior){
   vec3 outR = refract(rr, -calcNormal(pos + rr * inner), ior);
   if (dot(outR, outR) < 0.001) outR = rr;
   float absorb = exp(-inner * 0.55);          // Beer–Lambert through the leaf
-  return env(outR) * absorb + uAccent * (1.0 - absorb) * 0.62;
+  return env(outR) * absorb * 0.88 + uAccent * (1.0 - absorb) * 1.05;
 }
 
 void main(){
@@ -583,7 +711,9 @@ void main(){
   // closer than this it fills the frame and glass loses all definition.
   // Portrait viewports pull further back so the panels stay legible.
   float pull = clamp((1.10 - uRes.x / uRes.y) / 0.60, 0.0, 1.0);
-  vec3 ro = vec3(0.0, 0.0, mix(7.5, 12.0, pull));
+  float baseZ = mix(7.5, 12.0, pull);
+  // The ascension dollies the camera into the open codex.
+  vec3 ro = vec3(0.0, 0.0, mix(baseZ, 2.35, uZoom));
   vec3 rd = normalize(vec3(uv * 1.35, -2.6));
 
   // parallax + zero-gravity drift, applied to the ray rather than the mesh
@@ -609,7 +739,7 @@ void main(){
     float cone = 1.0 - smoothstep(0.0, mix(0.34, 1.30, clamp(0.5 - pos.y * 0.35, 0.0, 1.0)), abs(pos.x));
     float dens = cone * smoothstep(-2.2, 1.9, pos.y)
                * (0.55 + 0.45 * noise(vec2(pos.x * 2.4, pos.y * 1.5 - uTime * 0.16)));
-    shaft += uAccent * dens * step * 0.011;
+    shaft += uAccent * dens * step * 0.0045;
     t += step;
     if (t > 12.0) break;
   }
@@ -633,10 +763,11 @@ void main(){
     // gilded rim + clearcoat specular from the heavenly source
     vec3 L = normalize(vec3(0.0, 1.0, 0.42));
     float spec = pow(max(dot(reflect(-L, N), -rd), 0.0), 88.0);
-    col += vec3(1.0, 0.97, 0.88) * spec * 2.6;
+    col += vec3(1.0, 0.97, 0.88) * spec * 1.3;
     col += uAccent * fres * 0.95;                       // gilded edge
     col += uAccent * pow(max(dot(N, L), 0.0), 2.0) * 0.22;
     col += vec3(0.55, 0.62, 1.0) * pow(1.0 - max(dot(-rd, N), 0.0), 2.0) * 0.10;
+    col *= vec3(1.03, 0.98, 0.88);            // warm vellum cast
 
     // Illuminated script: ruled lines of glowing text across the open
     // leaves. Masked off the spine and the outer margins, so it reads as
@@ -650,7 +781,8 @@ void main(){
                  * smoothstep(0.08, 0.22, abs(pos.x))
                  * smoothstep(1.02, 0.90, abs(pos.x))
                  * step(0.0, pos.z);            // front leaves only
-    col += uAccent * rule * words * margin * 0.30;
+    col = mix(col, col * vec3(0.30, 0.24, 0.15), rule * words * margin * 0.88);
+    col *= mix(1.0, 0.99, margin);            // faint parchment seating
   } else {
     col = env(rd);
   }
@@ -665,14 +797,17 @@ void main(){
     vec2 f = fract(gp) - 0.5;
     float sp = smoothstep(0.085, 0.0,
       length(f + (vec2(hash(cell), hash(cell + 7.3)) - 0.5) * 0.7));
-    col += uAccent * sp * 0.20 * (1.0 - smoothstep(0.25, 1.1, abs(uv.x)));
+    col += uAccent * sp * 0.10 * (1.0 - smoothstep(0.25, 1.1, abs(uv.x)));
   }
 
   // ACES-ish filmic tonemap + vignette
   col *= 1.05;
   col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
-  col *= mix(0.72, 1.0, smoothstep(1.35, 0.25, length(uv * vec2(0.85, 1.0))));
-  gl_FragColor = vec4(pow(max(col, 0.0), vec3(0.4545)), 1.0);
+  col *= mix(0.88, 1.0, smoothstep(1.45, 0.25, length(uv * vec2(0.85, 1.0))));
+  col = pow(max(col, 0.0), vec3(0.4545));
+  // ascension whiteout — the reader emerges out of the light
+  col = mix(col, vec3(1.0, 0.99, 0.95), clamp(uBloom, 0.0, 1.0));
+  gl_FragColor = vec4(col, 1.0);
 }
 `;
 
@@ -680,9 +815,9 @@ const Engine = (() => {
   const canvas = document.getElementById('gl');
   let gl = null, uni = {}, raf = 0;
   let mouse = { x: 0, y: 0 }, target = { x: 0, y: 0 };
-  let accent = [0.918, 0.702, 0.031];      // #eab308
+  let accent = [0.761, 0.529, 0.043];      // #c2870b — darkened for light sky
   let accentTarget = accent.slice();
-  let open = 0;
+  let open = 0, zoom = 0, bloom = 0;
   const t0 = performance.now();
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -722,7 +857,7 @@ const Engine = (() => {
       const loc = gl.getAttribLocation(prog, 'p');
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      ['uRes','uTime','uMouse','uAccent','uOpen'].forEach(n =>
+      ['uRes','uTime','uMouse','uAccent','uOpen','uZoom','uBloom'].forEach(n =>
         uni[n] = gl.getUniformLocation(prog, n));
     } catch (e) {
       // Graceful degradation: the celestial CSS layer carries the mood.
@@ -753,11 +888,29 @@ const Engine = (() => {
     gl.uniform2f(uni.uMouse, target.x, target.y);
     gl.uniform3f(uni.uAccent, accent[0], accent[1], accent[2]);
     gl.uniform1f(uni.uOpen, open);
+    gl.uniform1f(uni.uZoom, zoom);
+    gl.uniform1f(uni.uBloom, bloom);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   return {
     init,
+    /* Screen-space rect of the codex, derived from the same camera
+       constants the shader uses, so the hit-area tracks it exactly. */
+    bookRect() {
+      const W = innerWidth, H = innerHeight;
+      const pull = Math.min(Math.max((1.10 - W / H) / 0.60, 0), 1);
+      const camZ = 7.5 + (12.0 - 7.5) * pull;
+      const scale = 1.35 * camZ / 2.6;         // world units per uv unit at z=0
+      const halfW = 1.20 / scale, halfH = 1.56 / scale;   // uv half-extents
+      return {
+        left:   W / 2 - halfW * H,
+        top:    H / 2 - halfH * H,
+        width:  halfW * H * 2,
+        height: halfH * H * 2,
+      };
+    },
+    setZoom(z, b) { zoom = z; bloom = b; },
     setAccent(hex) {
       accentTarget = [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
       document.documentElement.style.setProperty('--accent',
@@ -864,15 +1017,109 @@ const shuffle = (a) => {
   }
   return r;
 };
-function speak(text) {
-  try {
-    if (!('speechSynthesis' in window) || !text) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.92;
-    speechSynthesis.speak(u);   // device-local voices; no network
-  } catch (_) {}
-}
+/* ── VOICE ─────────────────────────────────────────────────────────
+   A real narration engine rather than a one-line speak() call.
+
+   1. Pre-rendered audio wins when present. `tools/render-voice.mjs`
+      can bake ElevenLabs narration into data/voice/*.mp3 at build time;
+      those files ship inside the bundle, so a premium voice costs zero
+      network at read time and the offline promise holds.
+   2. Otherwise the device's own synthesizer is used — but with the best
+      available voice chosen by score, not whatever the browser defaults
+      to (which is usually the worst one installed).
+
+   Long text is split into sentences: Chrome silently truncates
+   utterances past roughly 200 characters, which is why naive
+   speechSynthesis calls cut off mid-verse.                            */
+const Voice = (() => {
+  const PREFERRED = [
+    'Google UK English Male', 'Google UK English Female', 'Google US English',
+    'Microsoft Guy Online', 'Microsoft Aria Online', 'Microsoft Ryan Online',
+    'Daniel', 'Serena', 'Samantha', 'Alex', 'Karen', 'Moira', 'Tessa',
+  ];
+  let voice = null, queue = [], speaking = false, audio = null;
+  let onState = () => {};
+
+  function pick() {
+    if (!('speechSynthesis' in window)) return null;
+    const all = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+    if (!all.length) return null;
+    const score = (v) => {
+      let s = 0;
+      const i = PREFERRED.indexOf(v.name);
+      if (i >= 0) s += 1000 - i * 10;
+      if (/natural|neural|premium|enhanced/i.test(v.name)) s += 400;
+      if (/compact|espeak|robot/i.test(v.name)) s -= 500;
+      if (v.localService) s += 60;              // works with the network off
+      if (/en-GB/i.test(v.lang)) s += 25;       // reads Jacobean English well
+      if (v.default) s += 10;
+      return s;
+    };
+    return all.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+
+  if ('speechSynthesis' in window) {
+    voice = pick();
+    speechSynthesis.onvoiceschanged = () => { voice = pick(); };
+  }
+
+  function sentences(text) {
+    return String(text)
+      .replace(/\s+/g, ' ')
+      .replace(/[""]/g, '')
+      .match(/[^.!?;:]+[.!?;:]*/g) || [text];
+  }
+
+  function next() {
+    if (!queue.length) { speaking = false; onState(false); return; }
+    const chunk = queue.shift();
+    const u = new SpeechSynthesisUtterance(chunk.trim());
+    if (voice) u.voice = voice;
+    u.rate = 0.88;            // unhurried; this is Scripture, not a podcast
+    u.pitch = 0.98;
+    u.volume = 1;
+    u.onend = next;
+    u.onerror = next;
+    speechSynthesis.speak(u);
+  }
+
+  return {
+    onStateChange(fn) { onState = fn; },
+    speaking: () => speaking,
+    stop() {
+      queue = [];
+      speaking = false;
+      try { speechSynthesis.cancel(); } catch (_) {}
+      if (audio) { audio.pause(); audio = null; }
+      onState(false);
+    },
+    /* clipId (optional) selects pre-rendered narration if it was baked in */
+    speak(text, clipId) {
+      this.stop();
+      if (!text) return;
+      speaking = true; onState(true);
+      if (clipId) {
+        const a = new Audio('data/voice/' + clipId + '.mp3');
+        a.onended = () => { speaking = false; onState(false); };
+        a.onerror = () => { audio = null; synth(text); };   // fall back
+        audio = a;
+        a.play().catch(() => { audio = null; synth(text); });
+        return;
+      }
+      synth(text);
+    },
+    toggle(text, clipId) {
+      if (speaking) this.stop(); else this.speak(text, clipId);
+    },
+  };
+
+  function synth(text) {
+    if (!('speechSynthesis' in window)) { speaking = false; onState(false); return; }
+    queue = sentences(text);
+    next();
+  }
+})();
+const speak = (t, id) => Voice.speak(t, id);
 function celebrate(host, msg) {
   const r = el('div', 'result');
   r.append(el('div', 'big', '✦'), el('p', null, msg));
@@ -1426,9 +1673,114 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.getElementById('btn-listen').onclick = () =>
-  speak(document.getElementById('scripture-title').textContent + '. ' +
-        document.getElementById('scripture-text').textContent.replace(/["“”]/g, ''));
+/* Verse-of-the-day narration, with the button reflecting play/stop state. */
+const listenBtn = document.getElementById('btn-listen');
+const listenLabel = document.getElementById('listen-label');
+listenBtn.onclick = () => Voice.toggle(
+  document.getElementById('scripture-title').textContent + '. ' +
+  document.getElementById('scripture-text').textContent.replace(/["“”]/g, ''));
+Voice.onStateChange((on) => {
+  listenLabel.textContent = on ? 'STOP' : 'LISTEN TIMBRE';
+  listenBtn.classList.toggle('playing', on);
+});
+
+/* ══════════════ THE ASCENSION — the codex is the main control ══════════════
+   Click the floating Bible: the camera dollies into it, the pages splay
+   wide, light blooms to white, and the reader opens out of the whiteout. */
+const hitArea = document.getElementById('book-hit');
+let ascending = false;
+
+function placeHitArea() {
+  const r = Engine.bookRect();
+  hitArea.style.left = r.left + 'px';
+  hitArea.style.top = r.top + 'px';
+  hitArea.style.width = r.width + 'px';
+  hitArea.style.height = r.height + 'px';
+}
+addEventListener('resize', placeHitArea);
+placeHitArea();
+
+function ascend() {
+  if (ascending) return;
+  ascending = true;
+  hitArea.style.pointerEvents = 'none';
+  document.getElementById('book-hint').classList.add('gone');
+
+  const DUR = 1150;
+  const t0 = performance.now();
+  const easeIn = (t) => t * t * t;                    // slow, then rushing
+  let opened = false;
+
+  (function frame(now) {
+    const t = Math.min((now - t0) / DUR, 1);
+    const zoom = easeIn(t);
+    // whiteout only in the last third, so the dolly is seen before the flash
+    const bloom = Math.max(0, (t - 0.62) / 0.38);
+    Engine.setZoom(zoom, bloom * bloom);
+
+    if (!opened && t > 0.88) {                        // open inside the light
+      opened = true;
+      const m = MODULES.read;
+      openSheet(m[0], m[1], m[2]);
+      document.getElementById('sheet').classList.add('from-light');
+    }
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      // ease the heavens back in behind the reader
+      const t1 = performance.now();
+      (function back(n2) {
+        const k = Math.min((n2 - t1) / 700, 1);
+        Engine.setZoom(1 - k, (1 - k) * (1 - k));
+        if (k < 1) requestAnimationFrame(back);
+        else {
+          Engine.setZoom(0, 0);
+          ascending = false;
+          hitArea.style.pointerEvents = 'auto';
+          document.getElementById('book-hint').classList.remove('gone');
+        }
+      })(t1);
+    }
+  })(t0);
+}
+hitArea.addEventListener('click', ascend);
+hitArea.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ascend(); }
+});
+
+/* Brand mark and the offline badge are both real controls, not decoration. */
+document.querySelector('.brand').onclick = () => openSheet(
+  'ECOLOGIA', 'The complete Word, carried anywhere.', (host) => {
+    host.innerHTML = `
+      <div class="detail-block"><span class="kind">Why this exists</span>
+        <p>Missionaries work where there is no signal, no app store, and no budget
+        for licensing. ECOLOGIA is a folder of static files. Put it on a phone,
+        walk into a valley with no bars, and nothing is lost.</p></div>
+      <div class="detail-block"><span class="kind">The text</span>
+        <p>The complete King James Version — 66 books, 31,102 verses — in the
+        public domain worldwide. No license, royalty, or permission is required
+        to copy, print, translate, or distribute it, in any quantity, forever.
+        That is what lets this app be handed phone to phone by people you will
+        never meet, and stay legal at every hop.</p></div>
+      <div class="detail-block christ"><span class="kind">The commission</span>
+        <p>"Go ye therefore, and teach all nations… and, lo, I am with you alway,
+        even unto the end of the world." — Matthew 28:19-20</p></div>`;
+  });
+
+document.querySelector('.badge').onclick = () => openSheet(
+  'Offline Active', 'What this badge actually promises.', (host) => {
+    host.innerHTML = `
+      <div class="detail-block"><span class="kind">Zero external requests</span>
+        <p>No CDN, no web fonts, no analytics, no telemetry, no accounts. The
+        build fails if any resource points at an outside host, so this badge
+        cannot quietly stop being true.</p></div>
+      <div class="detail-block"><span class="kind">Everything is local</span>
+        <p>All 31,102 verses, every module, every game, and the rendering engine
+        are in the bundle. After the first visit the service worker serves it
+        all from cache — airplane mode changes nothing.</p></div>
+      <div class="detail-block"><span class="kind">Install it</span>
+        <p>Use your browser's "Add to Home Screen" to install ECOLOGIA as an app.
+        It will open and run with the network off, permanently.</p></div>`;
+  });
 
 /* ══════════════════════════ 8 · IGNITION ══════════════════════════ */
 Engine.init();

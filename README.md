@@ -46,6 +46,32 @@ file in `data/`, point `Scripture.load()` at it, and nothing else changes.
 Other public-domain options that work the same way: the **World English
 Bible** (modern English, public domain) and the **American Standard Version**.
 
+## Narration
+
+Tap **LISTEN TIMBRE**, or tap any verse in the reader, to hear it read aloud.
+
+By default this uses the device's own speech engine — but with a real engine
+around it: the best installed voice is chosen by score rather than accepting
+the browser default (usually the worst one), the rate is slowed to 0.88, and
+long passages are split into sentences because Chrome silently truncates
+utterances past ~200 characters.
+
+For a premium voice, `tools/render-voice.mjs` bakes **ElevenLabs** narration
+into `data/voice/*.mp3` at build time:
+
+```bash
+export ELEVENLABS_API_KEY=sk_...
+node tools/render-voice.mjs            # the default clip set
+node tools/render-voice.mjs --book 43  # narrate a whole book
+```
+
+This is deliberately a *build* step, not a runtime call. ElevenLabs is a
+network service, and calling it while someone reads would break the promise
+that this app works with no signal. Rendering ahead of time means you pay
+once and every copy plays that voice offline, forever. The app prefers those
+files when present and falls back to the device voice when they are not, so
+the step is entirely optional.
+
 ## Rendering
 
 The centerpiece codex is **not** a 3D model or a WebGL library. It is a
