@@ -351,7 +351,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 #book-hit:focus-visible { outline: 2px solid #fff; outline-offset: 6px; }
 #book-hint {
   position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
-  z-index: 16; pointer-events: none; white-space: nowrap;
+  z-index: 30; cursor: pointer; white-space: nowrap; -webkit-appearance: none;
   padding: 9px 18px; border-radius: 999px;
   background: rgba(255,255,255,.62); border: 1px solid rgba(255,255,255,.9);
   box-shadow: 0 8px 26px rgba(40,84,150,.20);
@@ -360,13 +360,44 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
   color: #6b4708; animation: hintBreathe 3.4s ease-in-out infinite;
   transition: opacity .35s var(--ease-lux);
 }
-#book-hint span { color: #c2870b; margin-right: 6px; }
-#book-hint.gone { opacity: 0; }
-@keyframes hintBreathe {
-  0%,100% { opacity: .85; transform: translateX(-50%) translateY(0); }
-  50%     { opacity: 1;   transform: translateX(-50%) translateY(-4px); }
+#book-hint:active { transform: translateX(-50%) scale(.96); }
+#book-hint.gone { opacity: 0; pointer-events: none; }
+@media (max-width: 1039px) {
+  /* On phones the stacked cards cover the codex, so the pill is the way in. */
+  #book-hint { bottom: 20px; padding: 13px 22px; font-size: 12px;
+               box-shadow: 0 10px 30px rgba(40,84,150,.28); }
 }
-@media (max-width: 1039px) { #book-hint { bottom: 62px; } }
+#book-hint span { color: #c2870b; margin-right: 6px; }
+/* Pulse the glow, never the position: a target that drifts under your
+   thumb is harder to hit (and never settles for automated tapping). */
+@keyframes hintBreathe {
+  0%,100% { opacity: .88; box-shadow: 0 8px 26px rgba(40,84,150,.20); }
+  50%     { opacity: 1;   box-shadow: 0 8px 34px rgba(194,135,11,.42); }
+}
+
+@media (max-width: 900px) {
+  /* Every blurred panel forces the compositor to re-sample the animated
+     canvas beneath it. A handful of them will halve the frame rate on a
+     mid-range phone, so mobile trades blur for a denser frost. */
+  .glass-panel, .badge, .age-toggle, #book-hint {
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    background: rgba(255,255,255,.80);
+  }
+  #overlay { backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+             background: rgba(190,215,242,.94); }
+  .sheet { background: rgba(255,255,255,.96); }
+  body { padding: 14px; }
+  .scripture-card { padding: 22px; }
+  #scripture-title { font-size: 22px; }
+  .sheet { padding: 20px 16px; margin: 10px auto; border-radius: 20px; }
+  .sheet-head h2 { font-size: 21px; }
+  .reader-page { max-height: 64vh; padding: 16px 14px; }
+  .verses { font-size: 16.5px; }
+  /* comfortable touch targets */
+  .btn, .tile, .seq-card, .close-x, .reader-bar select { min-height: 44px; }
+  .reader-bar .btn { width: 52px; }
+  .grid-cards { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -382,7 +413,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
      the reader. The rect is positioned from the shader's camera math. -->
 <div id="book-hit" role="button" tabindex="0"
      aria-label="Open the Bible and read"></div>
-<div id="book-hint"><span>✦</span> Touch the Word to open it</div>
+<button id="book-hint" type="button"><span>✦</span> Touch the Word to open it</button>
 
 <!-- ══════════════════════════ HEADER ══════════════════════════ -->
 <header>
@@ -479,6 +510,432 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 <div id="overlay"><div class="glass-panel sheet" id="sheet"></div></div>
 
 <script>
+/* ============================================================================
+   HEAVENS.JS — a drop-in animated sky for any website
+   ----------------------------------------------------------------------------
+   Blue sky, drifting sunlit clouds, heaven's gates, and an optional floating
+   glass codex — raymarched in a single WebGL fragment shader.
+
+   No dependencies. No build step. No network. One file.
+
+     <script src="heavens.js"><\/script>
+     <script>Heavens.mount();<\/script>
+
+   Or auto-mount with zero JavaScript of your own:
+
+     <script src="heavens.js" data-heavens><\/script>
+
+   OPTIONS
+     accent    0xc2870b   gold light colour (hex int)
+     book      true       show the floating codex
+     gates     true       show heaven's gates
+     clouds    true       show cloud layers
+     parallax  true       follow the pointer (auto-off on touch devices)
+     quality   'auto'     'auto' | 'low' | 'high'
+     zIndex    -1         canvas stacking (default sits behind page content)
+
+   API
+     const sky = Heavens.mount(target?, options?)
+     sky.setAccent(0xef4444)      retheme the light
+     sky.setZoom(zoom, bloom)     0..1 dolly toward the codex, 0..1 whiteout
+     sky.bookRect()               codex rect in CSS pixels (for hit-testing)
+     sky.pause() / sky.resume()   stop/start the render loop
+     sky.destroy()                remove it entirely
+
+   PERFORMANCE
+     Raymarching is fill-rate bound, so this renders to a reduced-resolution
+     buffer that the browser scales up — invisible for a soft-focus backdrop,
+     and the difference between 60fps and a slideshow on a phone. Quality
+     adapts to measured frame time, and the loop pauses whenever the tab is
+     hidden or the canvas scrolls out of view.
+
+   MIT licensed. Part of ECOLOGIA.
+   ========================================================================== */
+(function (global) {
+  'use strict';
+
+  var VERT = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+
+  var FRAG = [
+'precision highp float;',
+'uniform vec2  uRes;',
+'uniform float uTime;',
+'uniform vec2  uMouse;',
+'uniform vec3  uAccent;',
+'uniform float uOpen;',
+'uniform float uZoom;',
+'uniform float uBloom;',
+'uniform float uSteps;',   // march budget — the main quality dial
+'uniform float uBook;',
+'uniform float uGates;',
+'uniform float uClouds;',
+
+'mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}',
+'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+'float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);',
+'  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}',
+
+/* Authored colours are display-space; the pipeline ends in ACES + 1/2.2
+   gamma, so they must be linearised on the way in or the sky bleaches. */
+'vec3 sRGB(vec3 c){return pow(max(c,0.0),vec3(2.2));}',
+
+'float fbm(vec2 p){float v=0.0,a=0.5;',
+'  for(int i=0;i<5;i++){v+=a*noise(p);p*=2.03;a*=0.5;}return v;}',
+
+'float cloudLayer(vec3 d,float h,float sc,float dr,float t){',
+'  if(d.y<0.02)return 0.0;',
+'  vec2 p=(d.xz*(h/d.y))*sc+vec2(t*dr,t*dr*0.35);',
+'  return smoothstep(0.60,0.97,fbm(p))*smoothstep(0.02,0.20,d.y);}',
+
+'float sdSeg(vec2 p,vec2 a,vec2 b){vec2 pa=p-a,ba=b-a;',
+'  return length(pa-ba*clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0));}',
+
+/* Pillars, arch, and railings — light rather than architecture.
+   "and its gates will never be shut by day" (Revelation 21:25) */
+'float gateField(vec2 q){',
+'  const float SPAN=0.46,SPRING=0.02,FOOT=-0.55;',
+'  float d=min(sdSeg(q,vec2(-SPAN,FOOT),vec2(-SPAN,SPRING))-0.022,',
+'              sdSeg(q,vec2( SPAN,FOOT),vec2( SPAN,SPRING))-0.022);',
+'  vec2 ac=q-vec2(0.0,SPRING);',
+'  if(ac.y>=0.0)d=min(d,abs(length(ac)-SPAN)-0.018);',
+'  for(int i=1;i<7;i++){float x=-SPAN+float(i)*(2.0*SPAN/7.0);',
+'    float top=SPRING+sqrt(max(SPAN*SPAN-x*x,0.0));',
+'    d=min(d,sdSeg(q,vec2(x,FOOT),vec2(x,top*0.93))-0.007);}',
+'  return d;}',
+
+'vec3 env(vec3 d){',
+/* The sun must sit in the hemisphere the rays travel toward (-z), or it
+   never enters frame and the clouds lose their gold rim. */
+'  vec3 L=normalize(vec3(0.06,0.58,-0.81));',
+'  float y=clamp(d.y*0.5+0.5,0.0,1.0);',
+'  vec3 c=mix(sRGB(vec3(0.62,0.80,0.95)),sRGB(vec3(0.13,0.38,0.80)),pow(y,0.55));',
+'  float sd=max(dot(d,L),0.0);',
+'  c+=sRGB(vec3(1.00,0.98,0.92))*pow(sd,320.0)*4.0;',
+'  c+=sRGB(vec3(1.00,0.94,0.80))*pow(sd,22.0)*0.55;',
+'  if(uGates>0.5 && d.z<-0.05){',
+'    float g=max(gateField(d.xy/(-d.z)*1.9),0.0);',
+'    c+=sRGB(vec3(1.00,0.99,0.95))*exp(-g*20.0)*2.10;',
+'    c+=sRGB(vec3(1.00,0.86,0.52))*exp(-g*5.0)*0.55;}',
+'  if(uClouds>0.5){',
+'    float cl=clamp(cloudLayer(d,5.5,0.35,0.05,uTime)*0.45',
+'                  +cloudLayer(d,2.4,0.62,0.14,uTime)*0.65,0.0,1.0);',
+'    vec3 cc=mix(sRGB(vec3(1.0)),sRGB(vec3(1.00,0.96,0.86)),pow(sd,2.0));',
+'    c=mix(c,cc,cl*0.80);',
+'    c+=sRGB(vec3(1.00,0.88,0.62))*cl*pow(sd,3.0)*0.30;}',
+'  return c;}',
+
+'float sdRoundBox(vec3 p,vec3 b,float r){vec3 q=abs(p)-b+r;',
+'  return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0)-r;}',
+
+'float mapBook(vec3 p){',
+'  vec3 pc=p;pc.z+=0.20;',
+'  float cover=sdRoundBox(pc,vec3(1.16,1.52,0.055),0.05);',
+'  float hinge=mix(0.55,0.15,uOpen);',
+'  vec3 pl=p;pl.x+=0.56;pl.xz*=rot(-hinge);',
+'  vec3 pr=p;pr.x-=0.56;pr.xz*=rot(hinge);',
+'  return min(cover,min(sdRoundBox(pl,vec3(0.52,1.42,0.028),0.02),',
+'                       sdRoundBox(pr,vec3(0.52,1.42,0.028),0.02)));}',
+
+'vec3 calcNormal(vec3 p){vec2 e=vec2(1.0,-1.0)*0.0012;',
+'  return normalize(e.xyy*mapBook(p+e.xyy)+e.yyx*mapBook(p+e.yyx)+',
+'                   e.yxy*mapBook(p+e.yxy)+e.xxx*mapBook(p+e.xxx));}',
+
+'float marchInside(vec3 ro,vec3 rd){float t=0.004;',
+'  for(int i=0;i<28;i++){float d=-mapBook(ro+rd*t);',
+'    if(d<0.0008)break;t+=max(d,0.006);if(t>5.0)break;}return t;}',
+
+/* Static swizzles per channel: dynamic vector indexing inside a loop is
+   legal ES 1.0 but mis-compiled by several mobile drivers. */
+'vec3 glassChannel(vec3 pos,vec3 N,vec3 rd,float ior){',
+'  vec3 rr=refract(rd,N,1.0/ior);',
+'  if(dot(rr,rr)<0.001)rr=reflect(rd,N);',
+'  float inner=marchInside(pos+rr*0.006,rr);',
+'  vec3 outR=refract(rr,-calcNormal(pos+rr*inner),ior);',
+'  if(dot(outR,outR)<0.001)outR=rr;',
+'  float ab=exp(-inner*0.55);',
+'  return env(outR)*ab*0.88+uAccent*(1.0-ab)*1.05;}',
+
+'void main(){',
+'  vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;',
+'  float pull=clamp((1.10-uRes.x/uRes.y)/0.60,0.0,1.0);',
+'  vec3 ro=vec3(0.0,0.0,mix(mix(7.5,12.0,pull),2.35,uZoom));',
+'  vec3 rd=normalize(vec3(uv*1.35,-2.6));',
+'  float ax=uMouse.x*0.55+sin(uTime*0.30)*0.05;',
+'  float ay=uMouse.y*0.36+cos(uTime*0.21)*0.03;',
+'  ro.y-=sin(uTime*0.8)*0.075;',
+'  ro.xz*=rot(ax);rd.xz*=rot(ax);',
+'  ro.yz*=rot(ay);rd.yz*=rot(ay);',
+
+'  float t=0.0,hit=0.0;vec3 shaft=vec3(0.0);',
+'  for(int i=0;i<80;i++){',
+'    if(float(i)>uSteps)break;',            // runtime quality dial
+'    vec3 pos=ro+rd*t;',
+'    float d=(uBook>0.5)?mapBook(pos):1e4;',
+'    if(d<0.0016){hit=1.0;break;}',
+'    float st=max(d*0.86,0.012);',
+/* Density weighted by STEP LENGTH: sphere-tracing steps shrink near
+   surfaces, so a per-iteration sum haloes every silhouette. */
+'    float cone=1.0-smoothstep(0.0,mix(0.34,1.30,clamp(0.5-pos.y*0.35,0.0,1.0)),abs(pos.x));',
+'    float dens=cone*smoothstep(-2.2,1.9,pos.y)',
+'              *(0.55+0.45*noise(vec2(pos.x*2.4,pos.y*1.5-uTime*0.16)));',
+'    shaft+=uAccent*dens*st*0.0045;',
+'    t+=st;if(t>12.0)break;}',
+
+'  vec3 col;',
+'  if(hit>0.5){',
+'    vec3 pos=ro+rd*t;vec3 N=calcNormal(pos);',
+'    float fres=pow(1.0-max(dot(-rd,N),0.0),4.0);',
+'    vec3 disp=vec3(glassChannel(pos,N,rd,1.440).r,',
+'                   glassChannel(pos,N,rd,1.495).g,',
+'                   glassChannel(pos,N,rd,1.550).b);',
+'    col=mix(disp,env(reflect(rd,N)),clamp(fres,0.0,0.85));',
+'    vec3 L=normalize(vec3(0.0,1.0,0.42));',
+'    col+=vec3(1.0,0.97,0.88)*pow(max(dot(reflect(-L,N),-rd),0.0),88.0)*1.3;',
+'    col+=uAccent*fres*0.95;',
+'    col+=uAccent*pow(max(dot(N,L),0.0),2.0)*0.22;',
+'    col+=vec3(0.55,0.62,1.0)*pow(1.0-max(dot(-rd,N),0.0),2.0)*0.10;',
+'    col*=vec3(1.03,0.98,0.88);',
+/* Script as ink, not glow: on a luminous page dark strokes read as text. */
+'    float freq=74.0;float line=floor(pos.y*freq);',
+'    float rule=smoothstep(0.74,0.97,sin(pos.y*freq)*0.5+0.5);',
+'    float words=smoothstep(0.34,0.46,noise(vec2(pos.x*22.0,line*3.7)));',
+'    float margin=smoothstep(1.24,1.12,abs(pos.y))*smoothstep(0.08,0.22,abs(pos.x))',
+'                *smoothstep(1.02,0.90,abs(pos.x))*step(0.0,pos.z);',
+'    col=mix(col,col*vec3(0.30,0.24,0.15),rule*words*margin*0.88);',
+'  } else { col=env(rd); }',
+'  col+=shaft;',
+'  col*=1.05;',
+'  col=(col*(2.51*col+0.03))/(col*(2.43*col+0.59)+0.14);',
+'  col*=mix(0.88,1.0,smoothstep(1.45,0.25,length(uv*vec2(0.85,1.0))));',
+'  col=pow(max(col,0.0),vec3(0.4545));',
+'  col=mix(col,vec3(1.0,0.99,0.95),clamp(uBloom,0.0,1.0));',
+'  gl_FragColor=vec4(col,1.0);}'
+  ].join('\n');
+
+  var UNIFORMS = ['uRes','uTime','uMouse','uAccent','uOpen','uZoom','uBloom',
+                  'uSteps','uBook','uGates','uClouds'];
+
+  function isTouch() {
+    return matchMedia('(hover: none), (pointer: coarse)').matches;
+  }
+  function toRGB(hex) {
+    return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+  }
+
+  function mount(target, options) {
+    if (target && typeof target === 'object' && !target.nodeType && !options) {
+      options = target; target = null;                 // Heavens.mount({...})
+    }
+    var o = options || {};
+    var canvas = typeof target === 'string' ? document.querySelector(target)
+               : (target && target.nodeType ? target : null);
+    var created = false;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;' +
+        'display:block;pointer-events:none;z-index:' + (o.zIndex != null ? o.zIndex : -1);
+      document.body.appendChild(canvas);
+      created = true;
+    }
+
+    var gl = null, prog = null, uni = {}, raf = 0, dead = false, running = false;
+    try {
+      gl = canvas.getContext('webgl', { antialias: false, alpha: false,
+                                        powerPreference: 'high-performance' })
+        || canvas.getContext('experimental-webgl');
+      if (!gl) throw new Error('WebGL unavailable');
+      prog = gl.createProgram();
+      [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]].forEach(function (pair) {
+        var sh = gl.createShader(pair[0]);
+        gl.shaderSource(sh, pair[1]); gl.compileShader(sh);
+        if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+          throw new Error(gl.getShaderInfoLog(sh));
+        gl.attachShader(prog, sh);
+      });
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+        throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      var buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(prog, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      UNIFORMS.forEach(function (n) { uni[n] = gl.getUniformLocation(prog, n); });
+    } catch (e) {
+      // Graceful degradation: a CSS sky, so the page never looks broken.
+      canvas.style.background =
+        'linear-gradient(180deg,#7db6ec 0%,#b6dbf7 46%,#e9f5ff 100%)';
+      return {
+        failed: true, reason: String(e && e.message || e),
+        setAccent: function () {}, setZoom: function () {},
+        bookRect: function () { return { left: 0, top: 0, width: 0, height: 0 }; },
+        pause: function () {}, resume: function () {},
+        destroy: function () { if (created) canvas.remove(); },
+      };
+    }
+
+    var touch = isTouch();
+    var quality = o.quality || 'auto';
+    /* Phones get a much smaller buffer. Raymarching is fill-rate bound, and
+       for a soft-focus backdrop the upscale is invisible — this is the whole
+       difference between 60fps and a slideshow on mobile. */
+    var targetScale = quality === 'high' ? Math.min(devicePixelRatio || 1, 1.5)
+                    : quality === 'low'  ? 0.45
+                    : (touch ? 0.55 : Math.min(devicePixelRatio || 1, 1.35));
+    var scale = targetScale;
+    var steps = touch ? 52 : 80;
+
+    var accent = toRGB(o.accent != null ? o.accent : 0xc2870b);
+    var accentTarget = accent.slice();
+    var mouse = { x: 0, y: 0 }, look = { x: 0, y: 0 };
+    var open = 0, zoom = 0, bloom = 0;
+    var t0 = (performance || Date).now();
+    var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var parallax = o.parallax !== false && !touch;
+    var showBook = o.book !== false, showGates = o.gates !== false,
+        showClouds = o.clouds !== false;
+
+    function resize() {
+      var w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
+      canvas.width = Math.max(1, Math.floor(w * scale));
+      canvas.height = Math.max(1, Math.floor(h * scale));
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    resize();
+
+    var onResize = function () { resize(); };
+    addEventListener('resize', onResize, { passive: true });
+
+    var onMove = null;
+    if (parallax) {
+      onMove = function (e) {
+        mouse.x = (e.clientX - innerWidth / 2) / (innerWidth / 2);
+        mouse.y = (e.clientY - innerHeight / 2) / (innerHeight / 2);
+      };
+      addEventListener('pointermove', onMove, { passive: true });
+    }
+
+    // Adaptive quality: watch real frame times and back off if we're slow.
+    var frames = 0, acc = 0, last = t0, adaptive = quality === 'auto';
+
+    function loop(now) {
+      if (dead) return;
+      raf = requestAnimationFrame(loop);
+      var dt = now - last; last = now;
+
+      if (adaptive) {
+        acc += dt; frames++;
+        if (frames >= 40) {
+          var avg = acc / frames; acc = 0; frames = 0;
+          if (avg > 24 && scale > 0.36) { scale = Math.max(0.36, scale * 0.82); resize(); }
+          else if (avg < 12 && scale < targetScale) {
+            scale = Math.min(targetScale, scale * 1.10); resize();
+          }
+        }
+      }
+
+      var time = reduced ? 0 : (now - t0) / 1000;
+      look.x += (mouse.x - look.x) * 0.05;
+      look.y += (mouse.y - look.y) * 0.05;
+      for (var i = 0; i < 3; i++) accent[i] += (accentTarget[i] - accent[i]) * 0.06;
+      open += (1 - open) * 0.018;
+
+      gl.uniform2f(uni.uRes, canvas.width, canvas.height);
+      gl.uniform1f(uni.uTime, time);
+      gl.uniform2f(uni.uMouse, look.x, look.y);
+      gl.uniform3f(uni.uAccent, accent[0], accent[1], accent[2]);
+      gl.uniform1f(uni.uOpen, open);
+      gl.uniform1f(uni.uZoom, zoom);
+      gl.uniform1f(uni.uBloom, bloom);
+      gl.uniform1f(uni.uSteps, steps);
+      gl.uniform1f(uni.uBook, showBook ? 1 : 0);
+      gl.uniform1f(uni.uGates, showGates ? 1 : 0);
+      gl.uniform1f(uni.uClouds, showClouds ? 1 : 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    var api = {
+      failed: false,
+      canvas: canvas,
+      resume: function () {
+        if (dead || running) return;
+        running = true; last = (performance || Date).now();
+        raf = requestAnimationFrame(loop);
+      },
+      pause: function () {
+        running = false;
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      },
+      setAccent: function (hex) { accentTarget = toRGB(hex); },
+      setZoom: function (z, b) { zoom = z || 0; bloom = b || 0; },
+      setLayers: function (opts) {
+        if (opts.book != null) showBook = !!opts.book;
+        if (opts.gates != null) showGates = !!opts.gates;
+        if (opts.clouds != null) showClouds = !!opts.clouds;
+      },
+      /* Codex rect in CSS pixels, from the same camera constants the shader
+         uses — so hit-areas track the book exactly. */
+      bookRect: function () {
+        var W = canvas.clientWidth || innerWidth, H = canvas.clientHeight || innerHeight;
+        var pull = Math.min(Math.max((1.10 - W / H) / 0.60, 0), 1);
+        var camZ = 7.5 + (12.0 - 7.5) * pull;
+        var s = 1.35 * camZ / 2.6;
+        var hw = 1.20 / s * H, hh = 1.56 / s * H;
+        return { left: W / 2 - hw, top: H / 2 - hh, width: hw * 2, height: hh * 2 };
+      },
+      destroy: function () {
+        dead = true; api.pause();
+        removeEventListener('resize', onResize);
+        if (onMove) removeEventListener('pointermove', onMove);
+        var ext = gl.getExtension('WEBGL_lose_context');
+        if (ext) ext.loseContext();
+        if (created) canvas.remove();
+      },
+    };
+
+    // Don't burn battery on a tab nobody is looking at.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) api.pause(); else api.resume();
+    });
+    // Or on a canvas that has scrolled out of view.
+    if (!created && global.IntersectionObserver) {
+      new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting) api.resume(); else api.pause();
+      }, { threshold: 0 }).observe(canvas);
+    }
+
+    api.resume();
+    return api;
+  }
+
+  var Heavens = { mount: mount, version: '1.0.0' };
+  global.Heavens = Heavens;
+  if (typeof module !== 'undefined' && module.exports) module.exports = Heavens;
+
+  // <script src="heavens.js" data-heavens><\/script> → mount with no JS at all
+  var self = document.currentScript;
+  if (self && self.hasAttribute('data-heavens')) {
+    var auto = {};
+    ['accent', 'zIndex'].forEach(function (k) {
+      var v = self.getAttribute('data-' + k.toLowerCase());
+      if (v != null) auto[k] = k === 'accent' ? parseInt(v.replace('#', ''), 16) : Number(v);
+    });
+    ['book', 'gates', 'clouds', 'parallax'].forEach(function (k) {
+      var v = self.getAttribute('data-' + k);
+      if (v != null) auto[k] = v !== 'false';
+    });
+    var q = self.getAttribute('data-quality');
+    if (q) auto.quality = q;
+    if (document.body) mount(auto);
+    else addEventListener('DOMContentLoaded', function () { mount(auto); });
+  }
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
 /* ═══════════════════════════════════════════════════════════════════
    ECOLOGIA ENGINE
    Rewritten from the source draft. Notable departures:
@@ -543,380 +1000,27 @@ const Scripture = (() => {
   return api;
 })();
 
-/* ════════════════════════ 1 · WEBGL ENGINE ════════════════════════ */
-const VERT = `attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }`;
-
-const FRAG = `
-precision highp float;
-uniform vec2  uRes;
-uniform float uTime;
-uniform vec2  uMouse;      // smoothed parallax, -1..1
-uniform vec3  uAccent;     // theme accent (age toggle rethemes this)
-uniform float uOpen;       // 0..1 book opening amount
-uniform float uZoom;       // 0..1 ascension dolly toward the codex
-uniform float uBloom;      // 0..1 whiteout at the peak of the ascension
-
-const float PI = 3.14159265;
-
-mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c,-s,s,c); }
-
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-float noise(vec2 p){
-  vec2 i = floor(p), f = fract(p);
-  f = f*f*(3.0-2.0*f);
-  return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
-             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
-}
-
-float sdRoundBox(vec3 p, vec3 b, float r){
-  vec3 q = abs(p) - b + r;
-  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0) - r;
-}
-
-/* The codex: a structural cover plus two page slabs hinged at the spine.
-   uOpen drives the hinge so the volume breathes open on load.           */
-float mapBook(vec3 p){
-  vec3 pc = p; pc.z += 0.20;
-  float cover = sdRoundBox(pc, vec3(1.16, 1.52, 0.055), 0.05);
-
-  float hinge = mix(0.55, 0.15, uOpen);       // radians off the page plane
-  vec3 pl = p; pl.x += 0.56; pl.xz *= rot(-hinge);
-  float left = sdRoundBox(pl, vec3(0.52, 1.42, 0.028), 0.02);
-
-  vec3 pr = p; pr.x -= 0.56; pr.xz *= rot(hinge);
-  float right = sdRoundBox(pr, vec3(0.52, 1.42, 0.028), 0.02);
-
-  return min(cover, min(left, right));
-}
-
-vec3 calcNormal(vec3 p){
-  vec2 e = vec2(1.0,-1.0) * 0.0012;
-  return normalize(
-    e.xyy * mapBook(p + e.xyy) + e.yyx * mapBook(p + e.yyx) +
-    e.yxy * mapBook(p + e.yxy) + e.xxx * mapBook(p + e.xxx));
-}
-
-/* Authored colours are picked in display space; the pipeline ends with an
-   ACES curve and a 1/2.2 gamma, so they must be linearised on the way in.
-   Skipping this is what washed the sky out to near-white.               */
-vec3 sRGB(vec3 c){ return pow(max(c, 0.0), vec3(2.2)); }
-
-float fbm(vec2 p){
-  float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; }
-  return v;
-}
-
-/* Sunlit cumulus on an altitude plane. Lower banks drift faster than high
-   cirrus, which gives the sky real parallax as the codex breathes.       */
-float cloudLayer(vec3 d, float height, float scale, float drift, float t){
-  if (d.y < 0.02) return 0.0;
-  vec2 p = (d.xz * (height / d.y)) * scale + vec2(t * drift, t * drift * 0.35);
-  float f = fbm(p);
-  return smoothstep(0.60, 0.97, f) * smoothstep(0.02, 0.20, d.y);
-}
-
-/* Heaven's gates, drawn in direction space so they stand behind everything
-   and refract through the codex. Luminous field glow rather than solid
-   geometry — they should read as light, not architecture.
-   "and its gates will never be shut by day — and there will be no night
-   there." (Revelation 21:25)                                             */
-float sdSeg(vec2 p, vec2 a, vec2 b){
-  vec2 pa = p - a, ba = b - a;
-  return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
-}
-float gateField(vec2 q){
-  const float SPAN = 0.46, SPRING = 0.02, FOOT = -0.55;
-  float pillarL = sdSeg(q, vec2(-SPAN, FOOT), vec2(-SPAN, SPRING)) - 0.022;
-  float pillarR = sdSeg(q, vec2( SPAN, FOOT), vec2( SPAN, SPRING)) - 0.022;
-  // semicircular arch springing from the pillar tops
-  vec2 ac = q - vec2(0.0, SPRING);
-  float arch = ac.y >= 0.0 ? abs(length(ac) - SPAN) - 0.018 : 1e3;
-  float d = min(min(pillarL, pillarR), arch);
-  // railings between the pillars, each stopping under the arch
-  for (int i = 1; i < 7; i++){
-    float x = -SPAN + float(i) * (2.0 * SPAN / 7.0);
-    float top = SPRING + sqrt(max(SPAN * SPAN - x * x, 0.0));
-    d = min(d, sdSeg(q, vec2(x, FOOT), vec2(x, top * 0.93)) - 0.007);
-  }
-  return d;
-}
-
-/* The heavens: bright blue sky, sunlit cloud banks, and the open gates. */
-vec3 env(vec3 d){
-  // The sun must sit in the hemisphere the rays actually travel toward
-  // (-z), or it never appears in frame and the clouds lose their rim.
-  vec3 L = normalize(vec3(0.06, 0.58, -0.81));
-  float y = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
-
-  // sky gradient — light blue at the horizon, deep blue toward the zenith
-  vec3 c = mix(sRGB(vec3(0.62, 0.80, 0.95)),
-               sRGB(vec3(0.13, 0.38, 0.80)), pow(y, 0.55));
-
-  // the sun, high and central
-  float sd = max(dot(d, L), 0.0);
-  c += sRGB(vec3(1.00, 0.98, 0.92)) * pow(sd, 320.0) * 4.0;
-  c += sRGB(vec3(1.00, 0.94, 0.80)) * pow(sd, 22.0) * 0.55;
-
-  // the gates, standing open behind everything
-  if (d.z < -0.05){
-    vec2 q = d.xy / (-d.z) * 1.9;
-    float g = max(gateField(q), 0.0);
-    c += sRGB(vec3(1.00, 0.99, 0.95)) * exp(-g * 20.0) * 2.10;
-    c += sRGB(vec3(1.00, 0.86, 0.52)) * exp(-g * 5.0) * 0.55;
-  }
-
-  // cloud banks, gold-rimmed on the sunward edge
-  float hi = cloudLayer(d, 5.5, 0.35, 0.05, uTime);
-  float lo = cloudLayer(d, 2.4, 0.62, 0.14, uTime);
-  float cl = clamp(hi * 0.45 + lo * 0.65, 0.0, 1.0);
-  vec3 cloudCol = mix(sRGB(vec3(1.00, 1.00, 1.00)),
-                      sRGB(vec3(1.00, 0.96, 0.86)), pow(sd, 2.0));
-  c = mix(c, cloudCol, cl * 0.80);
-  c += sRGB(vec3(1.00, 0.88, 0.62)) * cl * pow(sd, 3.0) * 0.30;   // sunward rim
-
-  return c;
-}
-
-/* March inside the glass to the far wall, so thickness reads honestly. */
-float marchInside(vec3 ro, vec3 rd){
-  float t = 0.004;
-  for (int i = 0; i < 28; i++){
-    float d = -mapBook(ro + rd * t);
-    if (d < 0.0008) break;
-    t += max(d, 0.006);
-    if (t > 5.0) break;
-  }
-  return t;
-}
-
-/* One spectral channel through the glass: in, through, and out again.
-   Written as a function returning a vec3 so each channel is picked with a
-   static .r/.g/.b swizzle — dynamic vector indexing inside a loop is legal
-   ES 1.0 but is mis-compiled by several mobile drivers.                  */
-vec3 glassChannel(vec3 pos, vec3 N, vec3 rd, float ior){
-  vec3 rr = refract(rd, N, 1.0 / ior);
-  if (dot(rr, rr) < 0.001) rr = reflect(rd, N);
-  float inner = marchInside(pos + rr * 0.006, rr);
-  vec3 outR = refract(rr, -calcNormal(pos + rr * inner), ior);
-  if (dot(outR, outR) < 0.001) outR = rr;
-  float absorb = exp(-inner * 0.55);          // Beer–Lambert through the leaf
-  return env(outR) * absorb * 0.88 + uAccent * (1.0 - absorb) * 1.05;
-}
-
-void main(){
-  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
-
-  // Framed so the codex reads as a discrete object with clear silhouette;
-  // closer than this it fills the frame and glass loses all definition.
-  // Portrait viewports pull further back so the panels stay legible.
-  float pull = clamp((1.10 - uRes.x / uRes.y) / 0.60, 0.0, 1.0);
-  float baseZ = mix(7.5, 12.0, pull);
-  // The ascension dollies the camera into the open codex.
-  vec3 ro = vec3(0.0, 0.0, mix(baseZ, 2.35, uZoom));
-  vec3 rd = normalize(vec3(uv * 1.35, -2.6));
-
-  // parallax + zero-gravity drift, applied to the ray rather than the mesh
-  float ax = uMouse.x * 0.55 + sin(uTime * 0.30) * 0.05;
-  float ay = uMouse.y * 0.36 + cos(uTime * 0.21) * 0.03;
-  float bob = sin(uTime * 0.8) * 0.075;
-  ro.y -= bob;
-  ro.xz *= rot(ax);  rd.xz *= rot(ax);
-  ro.yz *= rot(ay);  rd.yz *= rot(ay);
-
-  // ── primary march + volumetric shaft integrated along the way.
-  //    Density must be weighted by the STEP LENGTH: sphere-tracing steps
-  //    shrink near surfaces, so a per-iteration sum piles up halos around
-  //    every silhouette instead of measuring the light actually traversed.
-  float t = 0.0, hit = 0.0;
-  vec3 shaft = vec3(0.0);
-  for (int i = 0; i < 80; i++){
-    vec3 pos = ro + rd * t;
-    float d = mapBook(pos);
-    if (d < 0.0016){ hit = 1.0; break; }
-    float step = max(d * 0.86, 0.012);
-    // god-rays: a cone of light descending on the codex
-    float cone = 1.0 - smoothstep(0.0, mix(0.34, 1.30, clamp(0.5 - pos.y * 0.35, 0.0, 1.0)), abs(pos.x));
-    float dens = cone * smoothstep(-2.2, 1.9, pos.y)
-               * (0.55 + 0.45 * noise(vec2(pos.x * 2.4, pos.y * 1.5 - uTime * 0.16)));
-    shaft += uAccent * dens * step * 0.0045;
-    t += step;
-    if (t > 12.0) break;
-  }
-
-  vec3 col;
-  if (hit > 0.5){
-    vec3 pos = ro + rd * t;
-    vec3 N = calcNormal(pos);
-    float fres = pow(1.0 - max(dot(-rd, N), 0.0), 4.0);
-
-    // ── chromatic dispersion: three IORs split the spectrum, red bending
-    //    least and blue most, exactly as a real prism separates light.
-    vec3 disp = vec3(
-      glassChannel(pos, N, rd, 1.440).r,
-      glassChannel(pos, N, rd, 1.495).g,
-      glassChannel(pos, N, rd, 1.550).b);
-
-    vec3 refl = env(reflect(rd, N));
-    col = mix(disp, refl, clamp(fres, 0.0, 0.85));
-
-    // gilded rim + clearcoat specular from the heavenly source
-    vec3 L = normalize(vec3(0.0, 1.0, 0.42));
-    float spec = pow(max(dot(reflect(-L, N), -rd), 0.0), 88.0);
-    col += vec3(1.0, 0.97, 0.88) * spec * 1.3;
-    col += uAccent * fres * 0.95;                       // gilded edge
-    col += uAccent * pow(max(dot(N, L), 0.0), 2.0) * 0.22;
-    col += vec3(0.55, 0.62, 1.0) * pow(1.0 - max(dot(-rd, N), 0.0), 2.0) * 0.10;
-    col *= vec3(1.03, 0.98, 0.88);            // warm vellum cast
-
-    // Illuminated script: ruled lines of glowing text across the open
-    // leaves. Masked off the spine and the outer margins, so it reads as
-    // a page of Scripture rather than a striped slab.
-    float freq = 74.0;
-    float line = floor(pos.y * freq);
-    float rule = smoothstep(0.74, 0.97, sin(pos.y * freq) * 0.5 + 0.5);
-    // break each ruling into word-length segments with ragged right edges
-    float words = smoothstep(0.34, 0.46, noise(vec2(pos.x * 22.0, line * 3.7)));
-    float margin = smoothstep(1.24, 1.12, abs(pos.y))
-                 * smoothstep(0.08, 0.22, abs(pos.x))
-                 * smoothstep(1.02, 0.90, abs(pos.x))
-                 * step(0.0, pos.z);            // front leaves only
-    col = mix(col, col * vec3(0.30, 0.24, 0.15), rule * words * margin * 0.88);
-    col *= mix(1.0, 0.99, margin);            // faint parchment seating
-  } else {
-    col = env(rd);
-  }
-
-  col += shaft;
-
-  // drifting motes inside the shaft
-  for (int i = 0; i < 2; i++){
-    float fi = float(i);
-    vec2 gp = uv * (13.0 + fi * 9.0) + vec2(sin(uTime * 0.3 + fi) * 0.4, uTime * (0.13 + fi * 0.07));
-    vec2 cell = floor(gp);
-    vec2 f = fract(gp) - 0.5;
-    float sp = smoothstep(0.085, 0.0,
-      length(f + (vec2(hash(cell), hash(cell + 7.3)) - 0.5) * 0.7));
-    col += uAccent * sp * 0.10 * (1.0 - smoothstep(0.25, 1.1, abs(uv.x)));
-  }
-
-  // ACES-ish filmic tonemap + vignette
-  col *= 1.05;
-  col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
-  col *= mix(0.88, 1.0, smoothstep(1.45, 0.25, length(uv * vec2(0.85, 1.0))));
-  col = pow(max(col, 0.0), vec3(0.4545));
-  // ascension whiteout — the reader emerges out of the light
-  col = mix(col, vec3(1.0, 0.99, 0.95), clamp(uBloom, 0.0, 1.0));
-  gl_FragColor = vec4(col, 1.0);
-}
-`;
-
-const Engine = (() => {
-  const canvas = document.getElementById('gl');
-  let gl = null, uni = {}, raf = 0;
-  let mouse = { x: 0, y: 0 }, target = { x: 0, y: 0 };
-  let accent = [0.761, 0.529, 0.043];      // #c2870b — darkened for light sky
-  let accentTarget = accent.slice();
-  let open = 0, zoom = 0, bloom = 0;
-  const t0 = performance.now();
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function compile(type, src) {
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src); gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
-      throw new Error(gl.getShaderInfoLog(s));
-    return s;
-  }
-
-  function resize() {
-    // Raymarching is fill-rate bound; 1.5x DPR keeps 60fps on phones.
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    canvas.width = Math.floor(innerWidth * dpr);
-    canvas.height = Math.floor(innerHeight * dpr);
-    canvas.style.width = innerWidth + 'px';
-    canvas.style.height = innerHeight + 'px';
-    if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
-  }
-
-  function init() {
-    try {
-      gl = canvas.getContext('webgl', { antialias: false, alpha: false,
-                                        powerPreference: 'high-performance' });
-      if (!gl) throw new Error('no webgl');
-      const prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
-        throw new Error(gl.getProgramInfoLog(prog));
-      gl.useProgram(prog);
-      const buf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
-      const loc = gl.getAttribLocation(prog, 'p');
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      ['uRes','uTime','uMouse','uAccent','uOpen','uZoom','uBloom'].forEach(n =>
-        uni[n] = gl.getUniformLocation(prog, n));
-    } catch (e) {
-      // Graceful degradation: the celestial CSS layer carries the mood.
-      canvas.style.display = 'none';
-      document.getElementById('celestial').style.opacity = '.75';
-      return;
-    }
-    resize();
-    addEventListener('resize', resize);
-    addEventListener('pointermove', (e) => {
-      mouse.x = (e.clientX - innerWidth / 2) / (innerWidth / 2);
-      mouse.y = (e.clientY - innerHeight / 2) / (innerHeight / 2);
-    }, { passive: true });
-    loop();
-  }
-
-  function loop() {
-    raf = requestAnimationFrame(loop);
-    const time = reduced ? 0 : (performance.now() - t0) / 1000;
-    // critically-damped-ish inertia, matching the original spring feel
-    target.x += (mouse.x - target.x) * 0.05;
-    target.y += (mouse.y - target.y) * 0.05;
-    for (let i = 0; i < 3; i++) accent[i] += (accentTarget[i] - accent[i]) * 0.06;
-    open += (1 - open) * 0.018;
-
-    gl.uniform2f(uni.uRes, canvas.width, canvas.height);
-    gl.uniform1f(uni.uTime, time);
-    gl.uniform2f(uni.uMouse, target.x, target.y);
-    gl.uniform3f(uni.uAccent, accent[0], accent[1], accent[2]);
-    gl.uniform1f(uni.uOpen, open);
-    gl.uniform1f(uni.uZoom, zoom);
-    gl.uniform1f(uni.uBloom, bloom);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-  }
-
+/* ════════════════════════ 1 · WEBGL ENGINE ════════════════════════
+   The sky, clouds, gates and codex live in heavens.js — one shared engine,
+   inlined here by the build and also shipped as a standalone drop-in so the
+   same background can be mounted on any other site. */
+var Engine = (function () {
+  var sky = Heavens.mount(document.getElementById('gl'), {
+    accent: 0xc2870b, book: true, gates: true, clouds: true, quality: 'auto',
+  });
   return {
-    init,
-    /* Screen-space rect of the codex, derived from the same camera
-       constants the shader uses, so the hit-area tracks it exactly. */
-    bookRect() {
-      const W = innerWidth, H = innerHeight;
-      const pull = Math.min(Math.max((1.10 - W / H) / 0.60, 0), 1);
-      const camZ = 7.5 + (12.0 - 7.5) * pull;
-      const scale = 1.35 * camZ / 2.6;         // world units per uv unit at z=0
-      const halfW = 1.20 / scale, halfH = 1.56 / scale;   // uv half-extents
-      return {
-        left:   W / 2 - halfW * H,
-        top:    H / 2 - halfH * H,
-        width:  halfW * H * 2,
-        height: halfH * H * 2,
-      };
-    },
-    setZoom(z, b) { zoom = z; bloom = b; },
-    setAccent(hex) {
-      accentTarget = [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
-      document.documentElement.style.setProperty('--accent',
-        '#' + hex.toString(16).padStart(6, '0'));
+    init: function () {},
+    bookRect: function () { return sky.bookRect(); },
+    setZoom: function (z, b) { sky.setZoom(z, b); },
+    pause: function () { sky.pause(); },
+    resume: function () { sky.resume(); },
+    setAccent: function (hex) {
+      sky.setAccent(hex);
+      var h = hex.toString(16);
+      while (h.length < 6) h = '0' + h;
+      document.documentElement.style.setProperty('--accent', '#' + h);
       document.documentElement.style.setProperty('--accent-soft',
-        `rgba(${(hex>>16)&255},${(hex>>8)&255},${hex&255},.32)`);
+        'rgba(' + ((hex>>16)&255) + ',' + ((hex>>8)&255) + ',' + (hex&255) + ',.34)');
     },
   };
 })();
@@ -995,10 +1099,15 @@ function openSheet(title, sub, build) {
   overlay.classList.add('open');
   overlay.scrollTop = 0;
   document.body.style.overflow = 'hidden';
+  // The sky is fully covered now; pausing it frees the GPU for scrolling.
+  if (!ascending) { Engine.pause(); window.__skyPaused = true; }
 }
 function closeSheet() {
   overlay.classList.remove('open');
   document.body.style.overflow = '';
+  Engine.resume();
+  window.__skyPaused = false;
+  Voice.stop();
 }
 overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSheet(); });
 addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
@@ -1743,6 +1852,7 @@ function ascend() {
   })(t0);
 }
 hitArea.addEventListener('click', ascend);
+document.getElementById('book-hint').addEventListener('click', ascend);
 hitArea.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ascend(); }
 });

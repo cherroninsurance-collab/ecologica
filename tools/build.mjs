@@ -11,7 +11,7 @@
  * Usage: node tools/build.mjs [--standalone]
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,12 +19,21 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(resolve(ROOT, p), 'utf8');
 const minify = (p) => JSON.stringify(JSON.parse(read(p)));
 
+/* Inlining JS into HTML: the parser ends a <script> block at the first
+   "</script" it sees — even inside a comment or a string. heavens.js
+   documents its own install snippet, so that sequence must be escaped or
+   the library is silently truncated mid-comment. */
+const inlineSafe = (js) => js.replace(/<\/script/gi, '<\\/script');
+
+const heavens = inlineSafe(read('src/heavens.js'));
+
 let html = read('src/ecologia.src.html')
+  .replace('__HEAVENS_JS__', () => heavens)
   .replace('__BIBLE_DATA__', minify('data/bible-overview.json'))
   .replace('__TEACH_DATA__', minify('data/jesus-teachings.json'))
   .replace(/__CANON_META__/g, minify('data/canon.json'));
 
-for (const token of ['__BIBLE_DATA__', '__TEACH_DATA__', '__CANON_META__']) {
+for (const token of ['__BIBLE_DATA__', '__TEACH_DATA__', '__CANON_META__', '__HEAVENS_JS__']) {
   if (html.includes(token)) throw new Error('Unreplaced token: ' + token);
 }
 // The OFFLINE ACTIVE badge is a promise; fail the build if anything reaches out.
@@ -32,6 +41,12 @@ const external = html.match(/(?:src|href)\s*=\s*["']https?:\/\/[^"']+/gi);
 if (external) throw new Error('External request breaks offline: ' + external.join(', '));
 
 const kb = (s) => (Buffer.byteLength(s) / 1024).toFixed(0);
+
+// Ship the background engine standalone too, so it can be dropped into
+// any other site with a single <script> tag.
+mkdirSync(resolve(ROOT, 'dist'), { recursive: true });
+writeFileSync(resolve(ROOT, 'dist/heavens.js'), read('src/heavens.js'));
+console.log(`\u2714 dist/heavens.js — ${kb(heavens)} KB (drop-in background)`);
 
 writeFileSync(resolve(ROOT, 'index.html'), html);
 console.log(`✔ index.html — ${kb(html)} KB (loads data/bible-kjv.json)`);

@@ -72,6 +72,35 @@ once and every copy plays that voice offline, forever. The app prefers those
 files when present and falls back to the device voice when they are not, so
 the step is entirely optional.
 
+## heavens.js — the background as a drop-in for any site
+
+The sky engine is also shipped standalone. Copy `dist/heavens.js` next to any
+HTML file and add one line — that is the entire install:
+
+```html
+<script src="heavens.js" data-heavens></script>
+```
+
+It creates a fixed, full-screen canvas behind your page (`z-index:-1`,
+`pointer-events:none`), so it never touches your layout or intercepts clicks.
+For control, mount it yourself:
+
+```html
+<script src="heavens.js"></script>
+<script>
+  const sky = Heavens.mount({
+    accent: 0xc2870b,   // colour of the light
+    book:   false,      // hide the codex — just sky, clouds and gates
+    gates:  false,
+    quality:'auto'
+  });
+  sky.setAccent(0x2f7fd0);   // retheme live; it eases rather than jumping
+</script>
+```
+
+18 KB, no dependencies, no network. Open `demo.html` for a live playground and
+the full option/method reference. MIT licensed — use it anywhere.
+
 ## Rendering
 
 The centerpiece codex is **not** a 3D model or a WebGL library. It is a

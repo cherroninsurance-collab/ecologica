@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>heavens.js — drop-in animated sky</title>
+<style>
+  :root { --ink:#16233b; --dim:#4a5c78; --gold:#8a6108; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 40px 22px 80px;
+    font: 400 16px/1.65 -apple-system, 'Segoe UI', system-ui, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(180deg,#7db6ec,#e9f5ff); /* fallback */
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .card {
+    background: rgba(255,255,255,.62);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255,255,255,.88);
+    border-radius: 22px; padding: 30px;
+    box-shadow: 0 22px 60px rgba(40,84,150,.22), inset 0 1px 0 #fff;
+    margin-bottom: 20px;
+  }
+  h1 { font: 700 30px/1.2 Georgia, serif; margin: 0 0 6px; color: var(--gold); }
+  h2 { font-size: 17px; margin: 26px 0 8px; }
+  p  { color: var(--dim); margin: 0 0 12px; }
+  pre {
+    background: #101a2c; color: #e6edf7; padding: 15px 17px; border-radius: 13px;
+    overflow-x: auto; font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace;
+  }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 7px 6px; border-bottom: 1px solid rgba(40,84,150,.14); vertical-align: top; }
+  td:first-child { font-family: ui-monospace, monospace; color: var(--gold); white-space: nowrap; }
+  .row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 6px; }
+  button {
+    padding: 10px 16px; border-radius: 12px; cursor: pointer;
+    background: rgba(255,255,255,.8); border: 1px solid rgba(40,84,150,.2);
+    font: 600 13.5px inherit; color: var(--ink);
+  }
+  button:hover { background: #fff; }
+  @media (max-width: 900px) {
+    .card { backdrop-filter: none; -webkit-backdrop-filter: none;
+            background: rgba(255,255,255,.85); padding: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="card">
+    <h1>heavens.js</h1>
+    <p>A drop-in animated sky: blue heavens, sunlit clouds, heaven's gates and a
+       floating glass codex — raymarched in one WebGL shader. No dependencies,
+       no build step, no network. <strong>18&nbsp;KB.</strong></p>
+    <p>Everything you can see behind this panel is the library. Try the controls:</p>
+    <div class="row">
+      <button data-accent="0xc2870b">Gold light</button>
+      <button data-accent="0xef4444">Warm red</button>
+      <button data-accent="0x2f7fd0">Cool blue</button>
+      <button id="toggle-book">Toggle codex</button>
+      <button id="toggle-gates">Toggle gates</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Install</h2>
+    <p>Copy <code>heavens.js</code> next to your HTML. That's the whole install.</p>
+    <pre>&lt;script src="heavens.js" data-heavens&gt;&lt;/script&gt;</pre>
+    <p>That one line creates a fixed, full-screen canvas behind your page
+       (<code>z-index:-1</code>, <code>pointer-events:none</code>) so it never
+       interferes with your existing layout or clicks.</p>
+
+    <h2>Or control it yourself</h2>
+    <pre>&lt;script src="heavens.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const sky = Heavens.mount({
+    accent: 0xc2870b,   // colour of the light
+    book:   false,      // hide the codex — just sky and clouds
+    gates:  false,
+    quality:'auto'
+  });
+&lt;/script&gt;</pre>
+
+    <h2>Options</h2>
+    <table>
+      <tr><td>accent</td><td>Hex colour of the sunlight and glass tint. Default <code>0xc2870b</code>.</td></tr>
+      <tr><td>book</td><td>Show the floating codex. Default <code>true</code>.</td></tr>
+      <tr><td>gates</td><td>Show heaven's gates. Default <code>true</code>.</td></tr>
+      <tr><td>clouds</td><td>Show cloud layers. Default <code>true</code>.</td></tr>
+      <tr><td>parallax</td><td>Follow the pointer. Auto-disabled on touch devices.</td></tr>
+      <tr><td>quality</td><td><code>'auto'</code> (adapts to measured frame time), <code>'low'</code>, or <code>'high'</code>.</td></tr>
+      <tr><td>zIndex</td><td>Canvas stacking. Default <code>-1</code> — behind your content.</td></tr>
+    </table>
+
+    <h2>Methods</h2>
+    <table>
+      <tr><td>setAccent(hex)</td><td>Retheme the light; it eases rather than jumping.</td></tr>
+      <tr><td>setLayers({…})</td><td>Toggle book / gates / clouds at runtime.</td></tr>
+      <tr><td>setZoom(z, bloom)</td><td>Dolly toward the codex and bloom to white (0–1 each).</td></tr>
+      <tr><td>bookRect()</td><td>Codex rect in CSS pixels, for placing your own hit-area over it.</td></tr>
+      <tr><td>pause() / resume()</td><td>Stop and start the render loop.</td></tr>
+      <tr><td>destroy()</td><td>Remove it and release the GL context.</td></tr>
+    </table>
+
+    <h2>Performance</h2>
+    <p>Raymarching is fill-rate bound, so the sky renders to a reduced-resolution
+       buffer the browser scales up — invisible for a soft backdrop, and the
+       difference between 60fps and a slideshow on a phone. Quality adapts to
+       measured frame time, and the loop pauses automatically when the tab is
+       hidden or the canvas scrolls out of view.</p>
+    <p><strong>One caveat worth knowing:</strong> stacked <code>backdrop-filter</code>
+       blurs over an animated canvas are expensive — each blurred panel makes the
+       compositor re-sample the moving pixels beneath it. If your page has several
+       frosted panels, drop the blur under roughly 900px wide (as this page does)
+       and use a denser translucent background instead. Over a soft sky the
+       difference is nearly invisible, and it is the single biggest mobile win
+       available.</p>
+    <p>If WebGL is unavailable the canvas falls back to a CSS sky gradient, so the
+       page never looks broken.</p>
+
+    <h2>License</h2>
+    <p>MIT. Use it anywhere, commercially or not. Part of ECOLOGIA.</p>
+  </div>
+</div>
+
+<script src="dist/heavens.js"></script>
+<script>
+  var sky = Heavens.mount({ accent: 0xc2870b });
+  var book = true, gates = true;
+  document.querySelectorAll('[data-accent]').forEach(function (b) {
+    b.onclick = function () { sky.setAccent(Number(b.dataset.accent)); };
+  });
+  document.getElementById('toggle-book').onclick = function () {
+    book = !book; sky.setLayers({ book: book });
+  };
+  document.getElementById('toggle-gates').onclick = function () {
+    gates = !gates; sky.setLayers({ gates: gates });
+  };
+</script>
+</body>
+</html>
