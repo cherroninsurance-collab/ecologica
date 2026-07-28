@@ -24,7 +24,7 @@ phone, walk into a valley with no bars, and nothing is lost.
 | **Teachings of Jesus** | 45 teachings — the Sermon on the Mount, the parables, the seven I AMs, the miracles, His final words |
 | **YOUTH games** | The Creation Adventure · Heroes of Faith · Build the Verse |
 | **ADULT modules** | Testament Illuminations · Exegesis Training · Concordance threads |
-| **Daily Devotional** | *The Descending Light* — 90 original readings: Scripture, reflection, prayer, and one thing to do today |
+| **Daily Devotional** | *The Descending Light* — **365 original readings** across 45 arcs: Scripture, reflection, prayer, and one thing to do today |
 | **Global Maps** | The Acts 1:8 dispatch — the gospel moving outward from wherever you stand |
 
 ## On Bible translations and licensing
@@ -69,17 +69,58 @@ would be worse than omitting him.
 
 So *The Descending Light* is **original writing**, built on the method the
 classics share rather than their text: one passage, one truth, one prayer, one
-thing to do today. Ninety readings across twelve arcs — the God who speaks, the
-weight and the kindness, the cross, the empty tomb, grace, prayer, the valley,
-identity, holiness, love, mission, and glory.
+thing to do today. **365 readings across 45 arcs**, a full year:
+
+- **Days 1–90 — the gospel.** The God who speaks · the weight and the kindness ·
+  the cross · the empty tomb · grace not wages · teach us to pray · in the
+  valley · who you now are · the Spirit and holiness · love made visible ·
+  sent ones · hope and glory
+- **Days 91–180 — walking with God.** Worship · wisdom for the ordinary day ·
+  work and calling · money and contentment · the tongue · home and family ·
+  rest · fear and courage · humility · waiting · gratitude · friendship
+- **Days 181–270 — the whole story.** Genesis through Revelation, walked in
+  order: creation, Egypt, wilderness, kings, prophets, exile, the life of
+  Christ, the early church, the letters, and the end that is a beginning
+- **Days 271–365 — God and His people.** The character of God · the Spirit ·
+  the church · the disciplines · endurance · witness · justice and mercy ·
+  eternity · Advent · the incarnation · the year's end
 
 The entry is chosen deterministically from the date, so everyone reading on a
 given day gets the same one, and arrows let you move through the journey. The
 passage is pulled live from the offline KJV rather than duplicated, so the
 devotional always shows the real text.
 
-To extend it to a full 366 days, add entries to `data/devotional.json` — the
-engine reads the array length and needs no code change.
+Add a 366th entry for leap years the same way — the engine reads the array
+length and needs no code change.
+
+## Adding the ESV (you probably don't have to pay)
+
+The most common question about this app. The short version:
+
+**Crossway's ESV API is free for non-commercial use.** No payment, no
+negotiation — register at [api.esv.org](https://api.esv.org/) and you have a
+key. What it is *not* is offline: Crossway's terms cap local storage at 500
+verses or half a book, so the complete ESV cannot be saved to a device. That
+is a licensing boundary, not a technical one.
+
+So ECOLOGIA treats ESV as an **online enhancement over an offline base**. Open
+*TRANSLATION* in the footer, paste a key, and passages render in ESV whenever
+you have signal — falling back instantly to the offline KJV when you don't.
+Fetched verses are held in memory for the session only and never written to
+storage, which keeps the app inside the free terms.
+
+**Why modern translations are copyrighted at all:** a translation is decades of
+scholarly labour — committees of Hebrew and Greek specialists, revision cycles,
+typesetting. Copyright funds that work and stops the text being altered and
+republished under the same name. It is not a fee to *read* the ESV, which is
+free everywhere. It is a fee to *redistribute the whole text inside your own
+product*.
+
+**For full offline ESV** you need a negotiated license
+([crossway.org/permissions](https://www.crossway.org/permissions/)). Crossway
+does grant ministry and missions licenses, sometimes at no cost — worth asking,
+and worth describing this project when you do. Once granted, drop the text into
+`data/` in the same shape as the KJV file and nothing else changes.
 
 ## Narration
 

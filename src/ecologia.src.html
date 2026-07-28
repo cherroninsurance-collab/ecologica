@@ -524,6 +524,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
     <button data-module="books">HISTORICAL TEXTS</button>
     <button data-module="concordance">CONCORDANCE</button>
     <button data-module="maps">GLOBAL MAPS</button>
+    <button data-module="translation">TRANSLATION</button>
   </nav>
 </footer>
 
@@ -1173,6 +1174,104 @@ const GENRE_GLYPH = { law:'⛰️', history:'🏺', wisdom:'🎼', prophets:'�
 const CANON_META = __CANON_META__;
 
 
+
+/* ── OPTIONAL ESV (Crossway API) ────────────────────────────────────
+   The ESV API is FREE for non-commercial use — no payment required.
+   What it is not is offline: Crossway's terms cap local storage at 500
+   verses / half a book, so the whole text cannot be cached. That is a
+   licensing boundary, not a technical one, and ECOLOGIA respects it.
+
+   So ESV is an ONLINE ENHANCEMENT layered over the offline KJV. With a
+   key and a signal you read ESV; without either, the KJV is already
+   there and nothing breaks. Verses are held in memory for the session
+   only and never written to storage, which keeps the app inside the
+   free terms.  Get a key at api.esv.org.                             */
+const ESV = (() => {
+  const KEY = 'ecologia.esv.key';
+  const cache = new Map();                 // session memory only, never persisted
+  let key = null;
+  try { key = localStorage.getItem(KEY); } catch (_) {}
+
+  return {
+    enabled: () => !!key && navigator.onLine,
+    hasKey: () => !!key,
+    setKey(k) {
+      key = (k || '').trim() || null;
+      try { key ? localStorage.setItem(KEY, key) : localStorage.removeItem(KEY); } catch (_) {}
+      cache.clear();
+    },
+    /* Returns [{v,t}] in the app's shape, or null to fall back to KJV. */
+    async passage(refLabel) {
+      if (!this.enabled()) return null;
+      if (cache.has(refLabel)) return cache.get(refLabel);
+      try {
+        const url = 'https://api.esv.org/v3/passage/text/?q=' +
+          encodeURIComponent(refLabel) +
+          '&include-headings=false&include-footnotes=false&include-verse-numbers=true' +
+          '&include-short-copyright=false&include-passage-references=false';
+        const res = await fetch(url, { headers: { Authorization: 'Token ' + key } });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const raw = (data.passages || []).join(' ').replace(/\s+/g, ' ').trim();
+        if (!raw) return null;
+        // "[1] In the beginning..." → [{v:1, t:"In the beginning..."}]
+        const rows = [];
+        const re = /\[(\d+)\]\s*([^\[]*)/g;
+        let m;
+        while ((m = re.exec(raw))) rows.push({ v: +m[1], t: m[2].trim() });
+        const out = rows.length ? rows : [{ v: 0, t: raw }];
+        cache.set(refLabel, out);
+        return out;
+      } catch (_) { return null; }        // offline or refused → KJV
+    },
+    notice: 'Scripture quotations marked ESV are from the ESV\u00ae Bible ' +
+      '(The Holy Bible, English Standard Version\u00ae), copyright \u00a9 2001 by ' +
+      'Crossway, a publishing ministry of Good News Publishers. Used by permission. ' +
+      'All rights reserved.',
+  };
+})();
+
+function moduleTranslation(host) {
+  host.innerHTML =
+    '<div class="detail-block"><span class="kind">Currently reading</span>' +
+      '<p><b>King James Version</b> — all 66 books, 31,102 verses, stored on this device. ' +
+      'Public domain worldwide: no license, royalty, or permission is required to copy or ' +
+      'distribute it, in any quantity, forever. This is what makes ECOLOGIA legal to hand ' +
+      'phone to phone by people you will never meet.</p></div>' +
+    '<div class="detail-block"><span class="kind">Add the ESV \u2014 free, but online only</span>' +
+      '<p>Crossway\u2019s ESV API is <b>free for non-commercial use</b>. You do not have to pay. ' +
+      'But their terms cap local storage at 500 verses, so the full ESV cannot be saved to your ' +
+      'device \u2014 it has to be fetched as you read. Enter a key below and ECOLOGIA will show ESV ' +
+      'when you have signal, and fall back to the KJV the moment you don\u2019t.</p></div>' +
+    '<div class="ledger-add">' +
+      '<input id="esv-key" placeholder="ESV API key (from api.esv.org)" value="' +
+        (ESV.hasKey() ? '\u2022\u2022\u2022\u2022 saved' : '') + '">' +
+      '<button class="btn btn--gold" id="esv-save">Save</button>' +
+    '</div>' +
+    '<p id="esv-status" class="copyright-note">' +
+      (ESV.hasKey() ? 'ESV key saved. Passages will use ESV when online.'
+                    : 'No key set \u2014 reading the offline KJV.') + '</p>' +
+    '<div class="detail-block"><span class="kind">Why modern translations cost money</span>' +
+      '<p>A translation is decades of scholarly labour \u2014 committees of Hebrew and Greek ' +
+      'specialists, revision cycles, and typesetting. Copyright is how that work is funded ' +
+      'and how the text is protected from being altered and republished under the same name. ' +
+      'It is not a fee for reading Scripture; you can read the ESV free anywhere. It is a fee ' +
+      'for <i>redistributing</i> the whole text inside your own product.</p></div>' +
+    '<div class="detail-block"><span class="kind">If you want ESV fully offline</span>' +
+      '<p>That needs a negotiated license from Crossway (crossway.org/permissions). They do grant ' +
+      'ministry and missions licenses, sometimes at no cost \u2014 it is worth asking, and worth ' +
+      'describing this project when you do. Once granted, drop the text into <code>data/</code> ' +
+      'in the same shape as the KJV file and nothing else changes.</p></div>';
+
+  document.getElementById('esv-save').onclick = () => {
+    const v = document.getElementById('esv-key').value;
+    if (v.indexOf('\u2022') === -1) ESV.setKey(v);
+    document.getElementById('esv-status').textContent = ESV.hasKey()
+      ? 'ESV key saved. Passages will use ESV when online.'
+      : 'Key cleared \u2014 reading the offline KJV.';
+  };
+}
+
 /* ── DAILY DEVOTIONAL ───────────────────────────────────────────────
    "The Descending Light" — 90 days, in the four-part shape the enduring
    devotionals share: Scripture, reflection, prayer, and one thing to do
@@ -1200,6 +1299,20 @@ function moduleDevotional(host) {
     var e = DEVO.days[idx];
     var arc = DEVO.arcs.filter(function (a) { return a.id === e.arc; })[0];
     var rows = Scripture.passage(e.ref[0], e.ref[1], e.ref[2], e.ref[3]);
+    var version = 'KJV';
+    // If an ESV key is set and there is signal, upgrade the passage in place.
+    ESV.passage(e.refLabel).then(function (esvRows) {
+      if (!esvRows || idx !== devotionalDayIndex(devoOffset)) return;
+      var box = host.querySelector('.devo-passage .verses');
+      if (!box) return;
+      box.innerHTML = esvRows.map(function (r) {
+        return '<span class="vs">' + (r.v ? '<b>' + r.v + '</b>' : '') + escapeHtml(r.t) + ' ';
+      }).join('') + '</span>';
+      var tag = host.querySelector('.devo-passage .kind');
+      if (tag) tag.textContent = e.refLabel + '  \u00b7  ESV';
+      var note = host.querySelector('.copyright-note');
+      if (note) note.textContent = ESV.notice;
+    });
     var text = rows.map(function (r) {
       return '<span class="vs"><b>' + r.v + '</b>' + escapeHtml(r.t) + ' </span>';
     }).join('');
@@ -1418,6 +1531,7 @@ function moduleMaps(host) {
 
 /* ══════════════════════ 7 · MODULE ROUTER ══════════════════════ */
 const MODULES = {
+  translation: ['Bible Translation', 'What ECOLOGIA reads, and how to add the ESV.', moduleTranslation],
   devotional:  ['Daily Devotional', DEVO.meta.subtitle + ' \u2014 Scripture, reflection, prayer, and one thing to do today.', moduleDevotional],
   read:        ['Read the Word', 'The complete King James Version — 66 books, 31,102 verses. Tap any verse to hear it read aloud.', moduleRead],
   creation:    ['The Creation Adventure', 'Seven days, in the order God spoke them. Tap each day as it comes.', gameCreation],
