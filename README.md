@@ -1,0 +1,94 @@
+# ECOLOGIA — The Sacred Word
+
+A holographic, glassmorphic Bible application built for the Great Commission:
+**the complete Bible, every interactive module, 100% offline, on any device,
+with no license required — anywhere on earth.**
+
+> *"Go therefore and make disciples of all nations."* — Matthew 28:19
+
+---
+
+## Why this exists
+
+Missionaries work where there is no signal, no app store, and no budget for
+per-seat licensing. ECOLOGIA is a single folder of static files. Put it on a
+phone, walk into a valley with no bars, and nothing is lost.
+
+## What's inside
+
+| | |
+|---|---|
+| **Complete Scripture** | All 66 books, **31,102 verses** — the full King James Version, public domain worldwide |
+| **Reader** | Book and chapter navigation, tap any verse to hear it read aloud by the device's own voice |
+| **Canonical Atlas** | Every book's theme, key verse, main lessons, and where it points to Christ |
+| **Teachings of Jesus** | 45 teachings — the Sermon on the Mount, the parables, the seven I AMs, the miracles, His final words |
+| **YOUTH games** | The Creation Adventure · Heroes of Faith · Build the Verse |
+| **ADULT modules** | Testament Illuminations · Exegesis Training · Concordance threads |
+| **Global Maps** | The Acts 1:8 dispatch — the gospel moving outward from wherever you stand |
+
+## On Bible translations and licensing
+
+This app ships the **King James Version (1611)**, which is in the **public
+domain worldwide**. No license, royalty, permission, or attribution agreement
+is required to copy, print, translate, or distribute it — including
+commercially, including in unlimited quantity, forever.
+
+That is a deliberate choice. Modern translations such as the ESV, NIV, and NASB
+are copyrighted, and bundling their full text in an app requires a negotiated
+license from the publisher. For field work where the app will be copied phone
+to phone by people you will never meet, a public-domain text is the only
+option that stays legal at every hop.
+
+If you ever do license a modern translation, `tools/fetch-kjv.mjs` shows the
+expected data shape — `{ translation, verses: [{ b, c, v, t }] }`. Drop a new
+file in `data/`, point `Scripture.load()` at it, and nothing else changes.
+
+Other public-domain options that work the same way: the **World English
+Bible** (modern English, public domain) and the **American Standard Version**.
+
+## Rendering
+
+The centerpiece codex is **not** a 3D model or a WebGL library. It is a
+raymarched signed-distance field in a single fragment shader — one fullscreen
+triangle, zero dependencies:
+
+- Real single-bounce refraction, marched through the glass to the far wall
+- **Chromatic dispersion** across three IORs (1.440 / 1.495 / 1.550), so red
+  bends least and blue most, as in a real prism
+- Beer–Lambert absorption through the leaves
+- Volumetric god-rays integrated by step *length*, not per iteration
+- Illuminated script ruling broken into word-length segments
+- Spring-damped mouse parallax; portrait viewports pull the camera back
+
+## Build and run
+
+```bash
+node tools/build.mjs               # → index.html
+node tools/build.mjs --standalone  # → also ecologia-standalone.html (Bible inlined)
+
+npx http-server -p 8080            # any static server; then open localhost:8080
+```
+
+`index.html` is the app. `data/bible-kjv.json` is the Scripture text. The
+service worker precaches both on first visit, so every visit after that works
+with the network off.
+
+To refresh the Scripture text from source: `node tools/fetch-kjv.mjs data/bible-kjv.json`
+
+## Deploy
+
+Any static host works — Netlify, GitHub Pages, Cloudflare Pages, or a folder
+on a USB stick. There is no backend, no build step at runtime, no database,
+no telemetry, and no account system. Nothing about this app phones home.
+
+For field distribution:
+- **PWA** — visit once, "Add to Home Screen", then it works offline forever
+- **Standalone file** — `ecologia-standalone.html` is one self-contained file;
+  send it by Bluetooth, WhatsApp, or SD card where nothing else reaches
+- **Hotspot** — any phone running a pocket static server can hand the app to
+  nearby devices with no internet at all
+
+## License
+
+Application code: MIT (see `LICENSE`).
+Scripture text: King James Version, public domain.
