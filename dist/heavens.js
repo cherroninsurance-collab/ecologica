@@ -57,6 +57,7 @@
 'uniform float uBook;',
 'uniform float uGates;',
 'uniform float uClouds;',
+'uniform float uDisperse;',   // 0 on mobile: dispersion triples the marching cost
 
 'mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}',
 'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
@@ -129,7 +130,7 @@
 '                   e.yxy*mapBook(p+e.yxy)+e.xxx*mapBook(p+e.xxx));}',
 
 'float marchInside(vec3 ro,vec3 rd){float t=0.004;',
-'  for(int i=0;i<28;i++){float d=-mapBook(ro+rd*t);',
+'  for(int i=0;i<28;i++){ if(uDisperse<0.5&&i>15)break;float d=-mapBook(ro+rd*t);',
 '    if(d<0.0008)break;t+=max(d,0.006);if(t>5.0)break;}return t;}',
 
 /* Static swizzles per channel: dynamic vector indexing inside a loop is
@@ -173,9 +174,16 @@
 '  if(hit>0.5){',
 '    vec3 pos=ro+rd*t;vec3 N=calcNormal(pos);',
 '    float fres=pow(1.0-max(dot(-rd,N),0.0),4.0);',
-'    vec3 disp=vec3(glassChannel(pos,N,rd,1.440).r,',
-'                   glassChannel(pos,N,rd,1.495).g,',
-'                   glassChannel(pos,N,rd,1.550).b);',
+/* Dispersion runs glassChannel three times, and each call marches the
+   interior and computes normals — it is by far the most expensive thing
+   in the shader. Phones get one achromatic sample instead; the codex
+   still refracts, it just does not split the spectrum. */
+'    vec3 disp;',
+'    if(uDisperse>0.5){',
+'      disp=vec3(glassChannel(pos,N,rd,1.440).r,',
+'                glassChannel(pos,N,rd,1.495).g,',
+'                glassChannel(pos,N,rd,1.550).b);',
+'    } else { disp=glassChannel(pos,N,rd,1.495); }',
 '    col=mix(disp,env(reflect(rd,N)),clamp(fres,0.0,0.85));',
 '    vec3 L=normalize(vec3(0.0,1.0,0.42));',
 '    col+=vec3(1.0,0.97,0.88)*pow(max(dot(reflect(-L,N),-rd),0.0),88.0)*1.3;',
@@ -201,7 +209,7 @@
   ].join('\n');
 
   var UNIFORMS = ['uRes','uTime','uMouse','uAccent','uOpen','uZoom','uBloom',
-                  'uSteps','uBook','uGates','uClouds'];
+                  'uSteps','uBook','uGates','uClouds','uDisperse'];
 
   function isTouch() {
     return matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -273,7 +281,8 @@
                     : quality === 'low'  ? 0.45
                     : (touch ? 0.55 : Math.min(devicePixelRatio || 1, 1.35));
     var scale = targetScale;
-    var steps = touch ? 52 : 80;
+    var steps = touch ? 44 : 80;
+    var disperse = touch ? 0 : 1;      // spectral split is desktop-only
 
     var accent = toRGB(o.accent != null ? o.accent : 0xc2870b);
     var accentTarget = accent.slice();
@@ -341,6 +350,7 @@
       gl.uniform1f(uni.uBook, showBook ? 1 : 0);
       gl.uniform1f(uni.uGates, showGates ? 1 : 0);
       gl.uniform1f(uni.uClouds, showClouds ? 1 : 0);
+      gl.uniform1f(uni.uDisperse, disperse);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 

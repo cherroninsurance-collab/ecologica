@@ -191,6 +191,28 @@ triangle, zero dependencies:
 - Illuminated script ruling broken into word-length segments
 - Spring-damped mouse parallax; portrait viewports pull the camera back
 
+## Mobile performance notes
+
+Three things were making the app feel broken on phones, all now fixed:
+
+1. **Scripture loaded as one 5 MB bundle.** The whole Bible had to arrive and
+   parse before anything was readable. Now `tools/build.mjs` splits it into
+   one file per book (largest ~242 KB) and the reader fetches only the book
+   you open, prefetching the rest at idle for offline use. Time to interactive
+   went from unusable to **under a second**.
+2. **The hint pill covered the footer.** It is `position: fixed` at the bottom,
+   so on a phone it sat directly on top of GLOBAL MAPS and TRANSLATION and
+   swallowed their taps. The page now reserves space for it and the pill
+   retires once the footer scrolls into view.
+3. **Touch targets under 44px.** The age toggle, badge, brand and listen button
+   were 26–35px — under Apple's HIG minimum, which is the difference between
+   "tapped it" and "the app ignored me". All now ≥44px.
+
+The shader also drops chromatic dispersion on touch devices. Dispersion calls
+`glassChannel` three times and each call marches the glass interior and
+computes normals, so it is the single most expensive thing in the frame. The
+codex still refracts on a phone; it just does not split the spectrum.
+
 ## Build and run
 
 ```bash

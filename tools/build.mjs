@@ -27,6 +27,31 @@ const inlineSafe = (js) => js.replace(/<\/script/gi, '<\\/script');
 
 const heavens = inlineSafe(read('src/heavens.js'));
 
+/* Scripture is split into one file per book.
+   The single 5 MB bundle cost ~31s to interactive on a phone: the whole
+   Bible had to arrive and parse before anything could be read. Per-book
+   files are 20–200 KB, so opening John fetches John and nothing else. */
+{
+  const bible = JSON.parse(read('data/bible-kjv.json'));
+  const byBook = new Map();
+  for (const v of bible.verses) {
+    if (!byBook.has(v.b)) byBook.set(v.b, []);
+    byBook.get(v.b).push([v.c, v.v, v.t]);        // array rows: no repeated keys
+  }
+  mkdirSync(resolve(ROOT, 'data/books'), { recursive: true });
+  let total = 0;
+  for (const [id, rows] of byBook) {
+    const json = JSON.stringify({ b: id, rows });
+    writeFileSync(resolve(ROOT, `data/books/${id}.json`), json);
+    total += Buffer.byteLength(json);
+  }
+  if (byBook.size !== 66) throw new Error(`Split produced ${byBook.size} books, expected 66.`);
+  writeFileSync(resolve(ROOT, 'data/books/index.json'),
+    JSON.stringify({ translation: bible.translation, books: [...byBook.keys()].sort((a,b)=>a-b) }));
+  console.log(`\u2714 data/books/ — 66 files, ${(total/1024/1024).toFixed(1)} MB total, ` +
+              `largest ~${Math.round(Math.max(...[...byBook.values()].map(r=>JSON.stringify(r).length))/1024)} KB`);
+}
+
 let html = read('src/ecologia.src.html')
   .replace('__HEAVENS_JS__', () => heavens)
   .replace('__BIBLE_DATA__', minify('data/bible-overview.json'))
@@ -53,10 +78,14 @@ writeFileSync(resolve(ROOT, 'index.html'), html);
 console.log(`✔ index.html — ${kb(html)} KB (loads data/bible-kjv.json)`);
 
 if (process.argv.includes('--standalone')) {
+  /* Embedded as a JSON *string*, not an object literal. A 5 MB literal is
+     parsed by the JS engine during script evaluation and blocks first paint;
+     a string is cheap to load and JSON.parse runs later, off the critical
+     path, when Scripture is first actually needed. */
   const bible = minify('data/bible-kjv.json');
   const solo = html.replace('<script>\n/* ═══',
-    `<script>window.__ECOLOGIA_BIBLE__=${bible};</script>\n<script>\n/* ═══`);
-  if (!solo.includes('__ECOLOGIA_BIBLE__=')) throw new Error('Inline injection failed.');
+    `<script>window.__ECOLOGIA_BIBLE_RAW__=${JSON.stringify(bible)};</script>\n<script>\n/* ═══`);
+  if (!solo.includes('__ECOLOGIA_BIBLE_RAW__=')) throw new Error('Inline injection failed.');
   writeFileSync(resolve(ROOT, 'ecologia-standalone.html'), solo);
   console.log(`✔ ecologia-standalone.html — ${kb(solo)} KB (entire Bible inlined)`);
 }

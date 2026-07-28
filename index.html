@@ -313,6 +313,9 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 .accordion > button small { color: var(--ink-dim); font-size: 11.5px; letter-spacing: .06em; }
 .accordion .inner { padding: 0 17px 15px; }
 
+.loading-note { text-align: center; padding: 34px 20px; color: var(--ink-dim);
+  font-size: 14px; line-height: 1.7; }
+
 #map-canvas { width: 100%; height: 340px; border-radius: 16px;
   border: 1px solid rgba(255,255,255,.10); display: block; }
 
@@ -376,9 +379,14 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 #book-hint.gone { opacity: 0; pointer-events: none; }
 @media (max-width: 1039px) {
   /* On phones the stacked cards cover the codex, so the pill is the way in. */
-  #book-hint { bottom: 20px; padding: 13px 22px; font-size: 12px;
+  #book-hint { bottom: 20px; padding: 15px 22px; font-size: 12px; min-height: 48px;
                box-shadow: 0 10px 30px rgba(40,84,150,.28); }
+  /* ...but a fixed pill sits on top of whatever is at the bottom of the page.
+     Reserve the space so the footer controls are never underneath it. */
+  body { padding-bottom: 92px; }
 }
+/* And stand down entirely once the footer is on screen. */
+#book-hint.at-footer { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(8px); }
 #book-hint span { color: #c2870b; margin-right: 6px; }
 /* Pulse the glow, never the position: a target that drifts under your
    thumb is harder to hit (and never settles for automated tapping). */
@@ -386,6 +394,16 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
   0%,100% { opacity: .88; box-shadow: 0 8px 26px rgba(40,84,150,.20); }
   50%     { opacity: 1;   box-shadow: 0 8px 34px rgba(194,135,11,.42); }
 }
+
+/* Apple's HIG minimum touch target is 44px; several controls were 26–35px,
+   which is the difference between "tapped it" and "the app ignored me". */
+.age-toggle button { min-height: 44px; padding-inline: 20px; }
+.badge { min-height: 44px; }
+.brand { min-height: 44px; display: flex; align-items: center; }
+.link-btn { min-height: 44px; padding: 0 4px; }
+footer button { min-height: 44px; padding: 12px 4px; }
+.close-x { width: 44px; height: 44px; }
+.chev { width: 40px; height: 40px; }
 
 @media (max-width: 900px) {
   /* Every blurred panel forces the compositor to re-sample the animated
@@ -590,6 +608,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 'uniform float uBook;',
 'uniform float uGates;',
 'uniform float uClouds;',
+'uniform float uDisperse;',   // 0 on mobile: dispersion triples the marching cost
 
 'mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}',
 'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
@@ -662,7 +681,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 '                   e.yxy*mapBook(p+e.yxy)+e.xxx*mapBook(p+e.xxx));}',
 
 'float marchInside(vec3 ro,vec3 rd){float t=0.004;',
-'  for(int i=0;i<28;i++){float d=-mapBook(ro+rd*t);',
+'  for(int i=0;i<28;i++){ if(uDisperse<0.5&&i>15)break;float d=-mapBook(ro+rd*t);',
 '    if(d<0.0008)break;t+=max(d,0.006);if(t>5.0)break;}return t;}',
 
 /* Static swizzles per channel: dynamic vector indexing inside a loop is
@@ -706,9 +725,16 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 '  if(hit>0.5){',
 '    vec3 pos=ro+rd*t;vec3 N=calcNormal(pos);',
 '    float fres=pow(1.0-max(dot(-rd,N),0.0),4.0);',
-'    vec3 disp=vec3(glassChannel(pos,N,rd,1.440).r,',
-'                   glassChannel(pos,N,rd,1.495).g,',
-'                   glassChannel(pos,N,rd,1.550).b);',
+/* Dispersion runs glassChannel three times, and each call marches the
+   interior and computes normals — it is by far the most expensive thing
+   in the shader. Phones get one achromatic sample instead; the codex
+   still refracts, it just does not split the spectrum. */
+'    vec3 disp;',
+'    if(uDisperse>0.5){',
+'      disp=vec3(glassChannel(pos,N,rd,1.440).r,',
+'                glassChannel(pos,N,rd,1.495).g,',
+'                glassChannel(pos,N,rd,1.550).b);',
+'    } else { disp=glassChannel(pos,N,rd,1.495); }',
 '    col=mix(disp,env(reflect(rd,N)),clamp(fres,0.0,0.85));',
 '    vec3 L=normalize(vec3(0.0,1.0,0.42));',
 '    col+=vec3(1.0,0.97,0.88)*pow(max(dot(reflect(-L,N),-rd),0.0),88.0)*1.3;',
@@ -734,7 +760,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
   ].join('\n');
 
   var UNIFORMS = ['uRes','uTime','uMouse','uAccent','uOpen','uZoom','uBloom',
-                  'uSteps','uBook','uGates','uClouds'];
+                  'uSteps','uBook','uGates','uClouds','uDisperse'];
 
   function isTouch() {
     return matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -806,7 +832,8 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
                     : quality === 'low'  ? 0.45
                     : (touch ? 0.55 : Math.min(devicePixelRatio || 1, 1.35));
     var scale = targetScale;
-    var steps = touch ? 52 : 80;
+    var steps = touch ? 44 : 80;
+    var disperse = touch ? 0 : 1;      // spectral split is desktop-only
 
     var accent = toRGB(o.accent != null ? o.accent : 0xc2870b);
     var accentTarget = accent.slice();
@@ -874,6 +901,7 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
       gl.uniform1f(uni.uBook, showBook ? 1 : 0);
       gl.uniform1f(uni.uGates, showGates ? 1 : 0);
       gl.uniform1f(uni.uClouds, showClouds ? 1 : 0);
+      gl.uniform1f(uni.uDisperse, disperse);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
@@ -975,49 +1003,105 @@ const DEVO  = {"meta":{"title":"The Descending Light","subtitle":"A year in the 
 
 /* ── Scripture store ───────────────────────────────────────────────
    The complete King James Version — 66 books, 31,102 verses, public
-   domain worldwide. Loaded from data/bible-kjv.json when served, and
-   precached by the service worker for offline use; the standalone
-   build inlines it instead. Either way there is no network at read
-   time, and no license is required to copy or distribute the text. */
+   domain worldwide.
+
+   Loaded ONE BOOK AT A TIME. The previous single 5 MB bundle had to
+   arrive and parse before anything was readable, which measured ~31
+   seconds to interactive on a phone — the app looked broken because it
+   was still loading while you were tapping it. Now opening John fetches
+   John (~180 KB) and nothing else, and the interface is usable
+   immediately. Books are cached in memory and the rest are prefetched
+   quietly in the background, so offline use is unaffected.          */
 const Scripture = (() => {
-  let byChapter = null;                    // "b.c" → [{v,t}]
+  const books = new Map();          // bookId → Map("c" → [{v,t}])
+  const inflight = new Map();
   let translation = { id: 'KJV', name: 'King James Version',
     copyright: 'King James Version (1611). Public domain worldwide.' };
+  let soloParsed = false;
 
-  function index(payload) {
-    translation = payload.translation || translation;
-    byChapter = new Map();
-    for (const row of payload.verses) {
-      const key = row.b + '.' + row.c;
-      let arr = byChapter.get(key);
-      if (!arr) byChapter.set(key, arr = []);
-      arr.push({ v: row.v, t: row.t });
+  function ingestRows(bookId, rows) {
+    const chapters = new Map();
+    for (const r of rows) {                       // r = [chapter, verse, text]
+      let arr = chapters.get(r[0]);
+      if (!arr) chapters.set(r[0], arr = []);
+      arr.push({ v: r[1], t: r[2] });
     }
-    for (const arr of byChapter.values()) arr.sort((a, b) => a.v - b.v);
+    for (const arr of chapters.values()) arr.sort((a, b) => a.v - b.v);
+    books.set(bookId, chapters);
+  }
+
+  /* Standalone build: the whole Bible is inlined as a JSON string and
+     parsed once, lazily, the first time Scripture is actually wanted. */
+  function parseSolo() {
+    if (soloParsed || !window.__ECOLOGIA_BIBLE_RAW__) return soloParsed;
+    const data = JSON.parse(window.__ECOLOGIA_BIBLE_RAW__);
+    translation = data.translation || translation;
+    const grouped = new Map();
+    for (const v of data.verses) {
+      if (!grouped.has(v.b)) grouped.set(v.b, []);
+      grouped.get(v.b).push([v.c, v.v, v.t]);
+    }
+    for (const [id, rows] of grouped) ingestRows(id, rows);
+    window.__ECOLOGIA_BIBLE_RAW__ = null;         // release the string
+    soloParsed = true;
+    return true;
   }
 
   const api = {
-    async load() {
-      if (byChapter) return translation;
-      if (window.__ECOLOGIA_BIBLE__) { index(window.__ECOLOGIA_BIBLE__); return translation; }
+    /* Metadata only — returns immediately so the UI can paint. */
+    async init() {
+      if (window.__ECOLOGIA_BIBLE_RAW__) return translation;   // parsed on demand
       try {
-        const r = await fetch('data/bible-kjv.json');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        index(await r.json());
-      } catch (e) {
-        byChapter = new Map();              // reader degrades; rest still works
-        console.warn('Scripture text unavailable:', e.message);
-      }
+        const r = await fetch('data/books/index.json');
+        if (r.ok) translation = (await r.json()).translation || translation;
+      } catch (_) { /* offline first-run; books may still be cached */ }
       return translation;
     },
-    ready: () => byChapter !== null && byChapter.size > 0,
     translation: () => translation,
-    chapter: (b, c) => (byChapter && byChapter.get(b + '.' + c)) || [],
-    verse(b, c, v) {
-      const row = api.chapter(b, c).find(x => x.v === v);
-      return row ? row.t : '';
+    loaded: (b) => books.has(b) || (!!window.__ECOLOGIA_BIBLE_RAW__),
+
+    async book(b) {
+      if (books.has(b)) return books.get(b);
+      if (window.__ECOLOGIA_BIBLE_RAW__) { parseSolo(); return books.get(b); }
+      if (inflight.has(b)) return inflight.get(b);
+      const job = fetch('data/books/' + b + '.json')
+        .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then((d) => { ingestRows(b, d.rows); inflight.delete(b); return books.get(b); })
+        .catch(() => { inflight.delete(b); return null; });
+      inflight.set(b, job);
+      return job;
     },
-    passage: (b, c, from, to) => api.chapter(b, c).filter(x => x.v >= from && x.v <= to),
+
+    async chapter(b, c) {
+      const bk = await api.book(b);
+      return (bk && bk.get(c)) || [];
+    },
+    async passage(b, c, from, to) {
+      const rows = await api.chapter(b, c);
+      return rows.filter((r) => r.v >= from && r.v <= to);
+    },
+    /* Synchronous read for already-loaded books (used for re-renders). */
+    chapterSync(b, c) {
+      const bk = books.get(b);
+      return (bk && bk.get(c)) || [];
+    },
+
+    /* Quietly pull the rest down so the app is complete offline. One at a
+       time, at idle, so it never competes with what the reader is doing. */
+    prefetchAll() {
+      if (window.__ECOLOGIA_BIBLE_RAW__) return;
+      let i = 1;
+      const step = () => {
+        while (i <= 66 && books.has(i)) i++;
+        if (i > 66) return;
+        api.book(i++).then(() => {
+          if ('requestIdleCallback' in window) requestIdleCallback(step, { timeout: 3000 });
+          else setTimeout(step, 400);
+        });
+      };
+      if ('requestIdleCallback' in window) requestIdleCallback(step, { timeout: 4000 });
+      else setTimeout(step, 2500);
+    },
   };
   return api;
 })();
@@ -1099,9 +1183,7 @@ function switchAge(mode) {
     document.getElementById(`card${i}-desc`).textContent = c.desc;
     document.getElementById('card' + i).dataset.module = c.module;
   });
-  if (typeof Scripture !== 'undefined' && Scripture.ready()) {
-    setTimeout(refreshVerseOfDay, 270);   // after the fade-out
-  }
+  setTimeout(refreshVerseOfDay, 270);     // after the fade-out
 }
 
 /* ════════════════════════ 3 · OVERLAY SHELL ════════════════════════ */
@@ -1721,8 +1803,14 @@ function moduleDevotional(host) {
     var idx = devotionalDayIndex(devoOffset);
     var e = DEVO.days[idx];
     var arc = DEVO.arcs.filter(function (a) { return a.id === e.arc; })[0];
-    var rows = Scripture.passage(e.ref[0], e.ref[1], e.ref[2], e.ref[3]);
-    var version = 'KJV';
+    var rows = Scripture.chapterSync(e.ref[0], e.ref[1])
+      .filter(function (r) { return r.v >= e.ref[2] && r.v <= e.ref[3]; });
+    if (!rows.length) {
+      // Fetch the book, then re-render once it lands.
+      Scripture.passage(e.ref[0], e.ref[1], e.ref[2], e.ref[3]).then(function (got) {
+        if (got && got.length && idx === devotionalDayIndex(devoOffset)) render();
+      });
+    }
     // If an ESV key is set and there is signal, upgrade the passage in place.
     ESV.passage(e.refLabel).then(function (esvRows) {
       if (!esvRows || idx !== devotionalDayIndex(devoOffset)) return;
@@ -1805,18 +1893,23 @@ function moduleRead(host) {
     render();
   }
 
-  function render() {
+  async function render() {
     bookSel.value = readRef.b;
     fillChapters();
     const meta = CANON_META[readRef.b];
-    const verses = Scripture.chapter(readRef.b, readRef.c);
+    const want = readRef.b + '.' + readRef.c;
+    let verses = Scripture.chapterSync(readRef.b, readRef.c);
+    if (!verses.length) {
+      page.innerHTML = '<p class="loading-note">Opening ' + meta.name + '…</p>';
+      verses = await Scripture.chapter(readRef.b, readRef.c);
+      if (want !== readRef.b + '.' + readRef.c) return;   // user moved on
+    }
     prev.disabled = readRef.b === 1 && readRef.c === 1;
     next.disabled = readRef.b === 66 && readRef.c === meta.chapters;
 
     if (!verses.length) {
-      page.innerHTML = `<p class="sheet-sub" style="text-align:center;padding:30px">
-        Scripture text is still loading, or this build was opened directly from the
-        file system. Serve the folder (or use the standalone build) to read.</p>`;
+      page.innerHTML = '<p class="loading-note">This chapter could not be loaded. ' +
+        'If you are offline and have not opened this book before, reconnect once to cache it.</p>';
       return;
     }
     page.innerHTML =
@@ -2006,6 +2099,16 @@ function placeHitArea() {
 addEventListener('resize', placeHitArea);
 placeHitArea();
 
+/* The pill is fixed to the bottom of the viewport, so it would otherwise
+   float over the footer links and swallow their taps. Retire it as soon as
+   the footer is reached — by then the user has scrolled past the codex. */
+if (window.IntersectionObserver) {
+  new IntersectionObserver((entries) => {
+    document.getElementById('book-hint')
+      .classList.toggle('at-footer', entries[0].isIntersecting);
+  }, { threshold: 0.15 }).observe(document.querySelector('footer'));
+}
+
 function ascend() {
   if (ascending) return;
   ascending = true;
@@ -2095,13 +2198,12 @@ switchAge('adults');
 
 /* Load the Scripture text, then light up the verse of the day with the
    real thing rather than a hardcoded string. */
-Scripture.load().then(t => {
+/* Paint the interface first; Scripture arrives behind it. */
+Scripture.init().then(async (t) => {
   document.getElementById('translation-label').textContent =
     'TRANSLATION: ' + t.id + ' · PUBLIC DOMAIN';
-  if (!Scripture.ready()) return;
-  document.getElementById('read-card-desc').textContent =
-    `All 66 books, 31,102 verses. No license, no signal, no limits.`;
-  refreshVerseOfDay();
+  await refreshVerseOfDay();
+  Scripture.prefetchAll();          // fill the cache quietly for offline use
 });
 
 /* A verse for each day of the year, drawn from the loaded text. */
@@ -2112,11 +2214,11 @@ const DAILY = {
   kids:   [[1,1,1,1],[19,23,1,1],[43,3,16,16],[19,119,105,105],[42,15,4,5],
            [40,28,19,20],[62,4,19,19],[20,3,5,5],[49,6,1,1],[45,5,8,8]],
 };
-function refreshVerseOfDay() {
+async function refreshVerseOfDay() {
   const list = DAILY[AGE] || DAILY.adults;
   const dayIndex = Math.floor(Date.now() / 86400000) % list.length;
   const [b, c, from, to] = list[dayIndex];
-  const rows = Scripture.passage(b, c, from, to);
+  const rows = await Scripture.passage(b, c, from, to);
   if (!rows.length) return;
   const ref = `${CANON_META[b].name} ${c}:${from}` + (to > from ? `-${to}` : '');
   document.getElementById('scripture-title').textContent = ref;
