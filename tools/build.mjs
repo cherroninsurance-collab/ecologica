@@ -31,9 +31,10 @@ let html = read('src/ecologia.src.html')
   .replace('__HEAVENS_JS__', () => heavens)
   .replace('__BIBLE_DATA__', minify('data/bible-overview.json'))
   .replace('__TEACH_DATA__', minify('data/jesus-teachings.json'))
+  .replace('__DEVO_DATA__', minify('data/devotional.json'))
   .replace(/__CANON_META__/g, minify('data/canon.json'));
 
-for (const token of ['__BIBLE_DATA__', '__TEACH_DATA__', '__CANON_META__', '__HEAVENS_JS__']) {
+for (const token of ['__BIBLE_DATA__', '__TEACH_DATA__', '__CANON_META__', '__HEAVENS_JS__', '__DEVO_DATA__']) {
   if (html.includes(token)) throw new Error('Unreplaced token: ' + token);
 }
 // The OFFLINE ACTIVE badge is a promise; fail the build if anything reaches out.

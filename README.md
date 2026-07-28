@@ -24,6 +24,7 @@ phone, walk into a valley with no bars, and nothing is lost.
 | **Teachings of Jesus** | 45 teachings — the Sermon on the Mount, the parables, the seven I AMs, the miracles, His final words |
 | **YOUTH games** | The Creation Adventure · Heroes of Faith · Build the Verse |
 | **ADULT modules** | Testament Illuminations · Exegesis Training · Concordance threads |
+| **Daily Devotional** | *The Descending Light* — 90 original readings: Scripture, reflection, prayer, and one thing to do today |
 | **Global Maps** | The Acts 1:8 dispatch — the gospel moving outward from wherever you stand |
 
 ## On Bible translations and licensing
@@ -45,6 +46,40 @@ file in `data/`, point `Scripture.load()` at it, and nothing else changes.
 
 Other public-domain options that work the same way: the **World English
 Bible** (modern English, public domain) and the **American Standard Version**.
+
+## The daily devotional — and why it is original
+
+**The famous devotionals cannot legally be shipped in an app.** Worth stating
+plainly, because it is the first thing anyone asks:
+
+| Devotional | Status |
+|---|---|
+| *My Utmost for His Highest* (Chambers) | **In copyright** — US publication 1935, renewed 1963 |
+| *Jesus Calling* (Sarah Young, 2004) | In copyright |
+| *Our Daily Bread* | In copyright |
+| *New Morning Mercies* (Tripp, 2014) | In copyright |
+| *Morning and Evening* (Spurgeon, 1865) | **Public domain** |
+| *Faith's Checkbook* (Spurgeon, 1888) | **Public domain** |
+| *Streams in the Desert* (Cowman, 1925) | **Public domain in the US** |
+
+Spurgeon and Cowman are free to use — but no machine-readable copy was
+reachable, and reproducing their text from memory would risk putting words in
+a real author's mouth. Inventing quotations and attributing them to Spurgeon
+would be worse than omitting him.
+
+So *The Descending Light* is **original writing**, built on the method the
+classics share rather than their text: one passage, one truth, one prayer, one
+thing to do today. Ninety readings across twelve arcs — the God who speaks, the
+weight and the kindness, the cross, the empty tomb, grace, prayer, the valley,
+identity, holiness, love, mission, and glory.
+
+The entry is chosen deterministically from the date, so everyone reading on a
+given day gets the same one, and arrows let you move through the journey. The
+passage is pulled live from the offline KJV rather than duplicated, so the
+devotional always shows the real text.
+
+To extend it to a full 366 days, add entries to `data/devotional.json` — the
+engine reads the array length and needs no code change.
 
 ## Narration
 
