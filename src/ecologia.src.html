@@ -3,7 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#020617">
+<meta name="theme-color" content="#b6dbf7">
+<meta name="description" content="The complete Bible, a 365-day devotional, and interactive discipleship modules — 100% offline, no license required, anywhere on earth.">
+<meta property="og:title" content="ECOLOGIA — The Sacred Word">
+<meta property="og:description" content="The complete Bible and a year of daily devotionals, working with no signal at all.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<!-- The manifest was never linked, so the app could not actually be
+     installed — the whole point of a field tool that must survive offline. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ECOLOGIA">
 <title>ECOLOGIA — The Sacred Word</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════
@@ -1776,6 +1787,16 @@ document.querySelector('.badge').onclick = () => openSheet(
   });
 
 /* ══════════════════════════ 8 · IGNITION ══════════════════════════ */
+/* Register the service worker so the app can be installed and survive with
+   no signal. Skipped for the standalone single-file build, which has no
+   server to register against, and harmless if registration is refused. */
+if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0
+    && !window.__ECOLOGIA_BIBLE_RAW__) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
 Engine.init();
 switchAge('adults');
 

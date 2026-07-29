@@ -5,12 +5,17 @@
 
 'use strict';
 
-const CACHE = 'ecologia-v1';
+const CACHE = 'ecologia-v2';
+
+/* Precache only the shell. Scripture is now one file per book and is
+   cached on demand as books are opened (and by the app's idle prefetch),
+   so a first visit costs ~400 KB instead of 5 MB. */
 const PRECACHE = [
   './',
   'index.html',
   'manifest.webmanifest',
-  'data/bible-kjv.json',        // 66 books · 31,102 verses · public domain
+  'data/books/index.json',
+  'data/books/43.json',        // John — the app opens here
 ];
 
 self.addEventListener('install', (e) => {
