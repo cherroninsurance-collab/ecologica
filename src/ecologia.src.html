@@ -355,6 +355,11 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 .verses .vs.lit { background: rgba(240,181,63,.34); box-shadow: 0 0 18px rgba(194,135,11,.22); }
 .verses .vs b { font: 700 10.5px var(--font-ui); vertical-align: super;
   color: #a8760c; margin-right: .35em; }
+.ver-tag { display: inline-block; margin-left: 10px; padding: 3px 9px;
+  border-radius: 999px; font: 700 9.5px var(--font-ui); letter-spacing: .14em;
+  background: rgba(194,135,11,.18); border: 1px solid var(--accent-soft);
+  color: #6b4708; vertical-align: middle; }
+
 .copyright-note { font-size: 11px; color: #6d6350; text-align: center;
   margin: 22px auto 4px; max-width: 34em; line-height: 1.6; }
 
@@ -1339,8 +1344,10 @@ function moduleTranslation(host) {
     const v = document.getElementById('esv-key').value;
     if (v.indexOf('\u2022') === -1) ESV.setKey(v);
     document.getElementById('esv-status').textContent = ESV.hasKey()
-      ? 'ESV key saved. Passages will use ESV when online.'
+      ? 'ESV key saved. The reader, the devotional and the verse of the day ' +
+        'will use ESV whenever you have signal.'
       : 'Key cleared \u2014 reading the offline KJV.';
+    refreshVerseOfDay();
   };
 }
 
@@ -1479,18 +1486,27 @@ function moduleRead(host) {
         'If you are offline and have not opened this book before, reconnect once to cache it.</p>';
       return;
     }
-    page.innerHTML =
-      `<div class="chapter-head">${meta.name.toUpperCase()} ${readRef.c}</div>` +
-      `<div class="verses">` + verses.map(v =>
-        `<span class="vs" data-v="${v.v}"><b>${v.v}</b>${escapeHtml(v.t)} </span>`).join('') +
-      `</div><p class="copyright-note">${Scripture.translation().copyright}</p>`;
-    // tap a verse to hear it read aloud by the device's local voice
-    page.querySelectorAll('.vs').forEach(s => {
-      s.onclick = () => {
-        page.querySelectorAll('.vs').forEach(x => x.classList.remove('lit'));
-        s.classList.add('lit');
-        speak(s.textContent);
-      };
+    const paint = (rows, label, note) => {
+      page.innerHTML =
+        `<div class="chapter-head">${meta.name.toUpperCase()} ${readRef.c}` +
+        (label ? `<span class="ver-tag">${label}</span>` : '') + `</div>` +
+        `<div class="verses">` + rows.map(v =>
+          `<span class="vs" data-v="${v.v}"><b>${v.v}</b>${escapeHtml(v.t)} </span>`).join('') +
+        `</div><p class="copyright-note">${note}</p>`;
+      page.querySelectorAll('.vs').forEach(sp => {
+        sp.onclick = () => {
+          page.querySelectorAll('.vs').forEach(x => x.classList.remove('lit'));
+          sp.classList.add('lit');
+          speak(sp.textContent);
+        };
+      });
+    };
+    paint(verses, 'KJV', Scripture.translation().copyright);
+
+    // With a key and a signal, re-render the same chapter in ESV.
+    ESV.passage(meta.name + ' ' + readRef.c).then((esvRows) => {
+      if (!esvRows || want !== readRef.b + '.' + readRef.c) return;
+      paint(esvRows, 'ESV', ESV.notice);
     });
     page.scrollTop = 0;
   }
@@ -1791,6 +1807,15 @@ async function refreshVerseOfDay() {
   document.getElementById('scripture-title').textContent = ref;
   document.getElementById('scripture-text').textContent =
     '"' + rows.map(r => r.t).join(' ') + '"';
+  document.getElementById('translation-label').textContent =
+    'TRANSLATION: KJV · PUBLIC DOMAIN';
+  // Online with a key: swap the verse of the day to ESV as well.
+  const esvRows = await ESV.passage(ref);
+  if (esvRows && esvRows.length) {
+    document.getElementById('scripture-text').textContent =
+      '"' + esvRows.map(r => r.t).join(' ') + '"';
+    document.getElementById('translation-label').textContent = 'TRANSLATION: ESV';
+  }
 }
 </script>
 </body>
