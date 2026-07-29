@@ -366,6 +366,15 @@ footer button:hover { color: #6b4708; text-decoration: underline; }
 .verses .vs.lit { background: rgba(240,181,63,.34); box-shadow: 0 0 18px rgba(194,135,11,.22); }
 .verses .vs b { font: 700 10.5px var(--font-ui); vertical-align: super;
   color: #a8760c; margin-right: .35em; }
+.ver-chip {
+  min-height: 44px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+  font: 700 12px var(--font-ui); letter-spacing: .12em; color: #6b4708;
+  transition: all .2s var(--ease-lux);
+}
+.ver-chip:hover { background: var(--glass-bg-hi); border-color: var(--accent-soft); }
+.ver-chip.esv { background: linear-gradient(180deg,#ffd98a,#f0b53f);
+  border-color: rgba(146,97,10,.45); color: #4a3005; }
+
 .ver-tag { display: inline-block; margin-left: 10px; padding: 3px 9px;
   border-radius: 999px; font: 700 9.5px var(--font-ui); letter-spacing: .14em;
   background: rgba(194,135,11,.18); border: 1px solid var(--accent-soft);
@@ -472,7 +481,8 @@ footer button { min-height: 44px; padding: 12px 4px; }
       <button id="btn-kids" data-age="kids">YOUTH</button>
       <button id="btn-adults" data-age="adults" class="on">ADULT</button>
     </div>
-    <div class="badge glass-panel clickable" role="button" tabindex="0" title="What offline actually means here">
+    <button class="ver-chip glass-panel" id="ver-chip" data-module="translation" title="Bible translation — add the ESV">KJV</button>
+      <div class="badge glass-panel clickable" role="button" tabindex="0" title="What offline actually means here">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
       OFFLINE ACTIVE
     </div>
@@ -1836,6 +1846,12 @@ async function refreshVerseOfDay() {
     document.getElementById('scripture-text').textContent =
       '"' + esvRows.map(r => r.t).join(' ') + '"';
     document.getElementById('translation-label').textContent = 'TRANSLATION: ESV';
+  }
+  const chip = document.getElementById('ver-chip');
+  if (chip) {
+    const esvOn = !!(esvRows && esvRows.length);
+    chip.textContent = esvOn ? 'ESV' : 'KJV';
+    chip.classList.toggle('esv', esvOn);
   }
 }
 </script>

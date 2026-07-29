@@ -5,7 +5,7 @@
 
 'use strict';
 
-const CACHE = 'ecologia-v2';
+const CACHE = 'ecologia-v3';
 
 /* Precache only the shell. Scripture is now one file per book and is
    cached on demand as books are opened (and by the app's idle prefetch),
@@ -33,6 +33,16 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+
+  /* Only ever handle our own GET requests. A service worker sees EVERY
+     request the page makes, including cross-origin ones — and this handler
+     ends in a synthetic 404 when the network fails. That meant calls to
+     api.esv.org were being swallowed and answered with "Offline — asset not
+     in the bundle", so the ESV never appeared even with a valid key and a
+     live connection. Anything not ours is left to the network. */
+  if (url.origin !== location.origin || e.request.method !== 'GET') return;
+
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((hit) =>
       hit || fetch(e.request).then((res) => {
