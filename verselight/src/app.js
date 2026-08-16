@@ -99,7 +99,10 @@ async function openChapter(b,c,scroll=true){
   const data=await getBook(b);
   if(cur.b!==b||cur.c!==c)return;
   if(data.missing){
-    versesEl.innerHTML='<div class="loading">Could not load data/books/'+b+'.json</div>';
+    /* A filename is not an explanation. This happens in the sample build,
+       which carries only some books on purpose, so say which book is not
+       here rather than which file failed. */
+    versesEl.innerHTML='<div class="loading">'+meta[0]+' is not included in this edition.</div>';
     return;
   }
   const paint=(rws,note)=>{
