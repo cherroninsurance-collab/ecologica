@@ -12,6 +12,17 @@ all 31,102 verses, and nine study modules — with no network at all.
 points at an outside host (api.esv.org excepted, see below), if any of the 66
 book files is missing, or if the devotional is not 365 contiguous days.
 
+### Deploying by hand
+
+    node tools/build.mjs
+    mkdir -p dist/site && cp index.html *.js fonts.css sw.js manifest.webmanifest _headers dist/site/
+    cp -r fonts data dist/site/
+    (cd dist/site && zip -rq ../verselight-netlify.zip .)
+
+Drag `verselight-netlify.zip` onto app.netlify.com/drop. It must be a zip or a
+folder with `index.html` at its root — a single bare file is rejected, and
+because a drop deploy has no build step there are no logs to explain why.
+
 `artifact.mjs` produces two single-file shapes:
 
 - `dist/index.html` — a complete document. Drop it on any static host on its
