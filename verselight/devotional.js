@@ -79,12 +79,16 @@ async function render() {
   const rows = data && data.rows
     ? data.rows.filter((r) => r[0] === c && r[1] >= from && r[1] <= to)
     : [];
-  if (rows.length) paintVerses(rows, 'KJV', null);
-  else $('devoVerses').innerHTML = '<div class="loading">Passage unavailable offline</div>';
 
-  // Upgrade in place if an ESV key is present and there is signal.
-  const esvRows = await ESV.rows(e.refLabel, c);
-  if (esvRows && i === todayIndex(offset)) paintVerses(esvRows, 'ESV', ESV.NOTICE);
+  /* The ESV is asked for first, not swapped in afterwards — showing the KJV
+     and replacing it mid-read is how the reading ended up in the wrong
+     translation every time it opened. */
+  const esvRows = ESV.enabled() ? await ESV.rows(e.refLabel, c) : null;
+  if (i !== todayIndex(offset)) return;                 // user moved on again
+
+  if (esvRows) paintVerses(esvRows, 'ESV', ESV.NOTICE);
+  else if (rows.length) paintVerses(rows, 'KJV', null);
+  else $('devoVerses').innerHTML = '<div class="loading">Passage unavailable offline</div>';
 }
 
 async function boot() {

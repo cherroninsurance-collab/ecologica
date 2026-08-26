@@ -113,23 +113,30 @@ async function openChapter(b,c,scroll=true){
         }).join('') + (note?`<div class="loading" style="text-align:left;opacity:.45;font-size:11px;margin-top:18px">${note}</div>`:'')
       : '<div class="loading">Chapter not found</div>';
   };
-  const rows=(data.rows||[]).filter(r=>r[0]===c);
-  paint(rows,null);
-
-  /* With a key and a signal, re-render the same chapter in ESV. */
-  ESV.rows(meta[0]+' '+c, c).then(esvRows=>{
-    if(!esvRows||cur.b!==b||cur.c!==c)return;
-    paint(esvRows, ESV.NOTICE);
-    bindVerseTaps();
-  });
-
-  function bindVerseTaps(){}
-  versesEl.querySelectorAll('.v').forEach((el,i)=>{
+  const reveal=()=>versesEl.querySelectorAll('.v').forEach((el,i)=>{
     el.animate(
       [{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
       {duration:520,delay:Math.min(i*22,700),easing:'cubic-bezier(.2,.8,.3,1)',fill:'backwards'}
     );
   });
+
+  const rows=(data.rows||[]).filter(r=>r[0]===c);
+
+  /* Ask for the ESV before painting anything. Rendering the KJV first and
+     swapping it out when the fetch landed meant every chapter opened in the
+     wrong translation and stayed there for a whole network round-trip —
+     long enough to read several verses in it. The KJV is the fallback, so it
+     is what appears when the ESV does not arrive, not what appears first. */
+  if(ESV.enabled()){
+    ESV.rows(meta[0]+' '+c,c).then(esvRows=>{
+      if(cur.b!==b||cur.c!==c)return;
+      paint(esvRows||rows, esvRows?ESV.NOTICE:null);
+      reveal();
+    });
+  }else{
+    paint(rows,null);
+    reveal();
+  }
   localStorage.setItem('vl_last',b+':'+c);
   if(scroll)$('read').scrollIntoView({behavior:'smooth'});
 }
