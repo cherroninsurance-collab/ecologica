@@ -1,0 +1,3331 @@
+VERSELIGHT — COMPLETE SOURCE
+============================
+
+The whole app except two generated assets: fonts/ (30 self-hosted woff2 files)
+and data/ (66 Scripture files, the devotional, and three study tables). Those
+are built once and sit beside the code; nothing below needs them to be read or
+edited.
+
+Files are separated by lines beginning "===== FILE:". To change something, ask
+for the affected file back in full — they are small on purpose.
+
+Build:  node tools/build.mjs      copies src/ to the site root
+        node tools/artifact.mjs   folds everything into one deployable file
+
+
+
+===== FILE: src/index.html (43.5 KB) =====
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verselight — Scripture, illuminated</title>
+<!-- Fonts are self-hosted: a CDN link would make the app unusable offline,
+     which is the one thing it must never be. -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="manifest" href="manifest.webmanifest">
+<!-- Inline so the tab icon costs no request and still works offline. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2307080b'/%3E%3Ccircle cx='50' cy='50' r='17' fill='%23d9a441'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%23fff'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#07080b">
+<meta name="description" content="Verselight — the complete Bible and a year of daily devotionals. Works entirely offline, anywhere on earth.">
+<meta property="og:title" content="Verselight — Scripture, illuminated">
+<meta property="og:description" content="Sixty-six books. Thirty-one thousand verses. A year of devotionals. Nothing between you and the text.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Verselight">
+<style>
+:root{
+  --ink:#07080b;
+  --paper:#f4f1ea;
+  --band-b:#e8e2d4;
+  --band-dark:#07080b;
+  --gold:#d9a441;
+  --gold-lite:#f0d08a;
+  --accent:#2b5cff;
+  --ember:#ff5a25;
+  --rule:rgba(7,8,11,.14);
+  --r:16px;
+  --shadow:0 18px 60px -26px rgba(7,8,11,.45);
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+  --sans:"Archivo",system-ui,sans-serif;
+  --serif:"Newsreader",Georgia,serif;
+  --display:"Cormorant Garamond",Georgia,serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+::selection{background:var(--gold);color:#07080b}
+
+/* ---------- GLOBAL CANVAS LAYER ---------- */
+#gl{position:fixed;inset:0;z-index:0;pointer-events:none}
+#grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.055;mix-blend-mode:overlay}
+.page{position:relative;z-index:3}
+
+/* ---------- NAV ---------- */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:60;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:20px clamp(16px,4vw,54px);pointer-events:none;
+  transition:color .5s;
+}
+.nav>*{pointer-events:auto}
+.wordmark{font-weight:900;font-size:16px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;text-transform:uppercase}
+.wordmark .sig{width:26px;height:26px;position:relative;display:grid;place-items:center}
+.wordmark .sig::before{
+  content:"";position:absolute;inset:0;border-radius:50%;
+  background:radial-gradient(circle,var(--gold-lite),var(--gold) 45%,transparent 72%);
+  animation:halo 4s ease-in-out infinite;
+}
+.wordmark .sig::after{content:"";width:6px;height:6px;border-radius:50%;background:#fff;position:relative;box-shadow:0 0 12px 3px rgba(255,240,200,.9)}
+@keyframes halo{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.25);opacity:1}}
+.navlinks{display:flex;gap:clamp(10px,2.2vw,26px);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.navlinks button{position:relative;padding:6px 0;opacity:.6;transition:opacity .25s}
+.navlinks button::after{content:"";position:absolute;left:0;bottom:0;height:1.5px;width:0;background:var(--gold);transition:width .3s cubic-bezier(.2,1,.3,1)}
+.navlinks button:hover{opacity:1}
+.navlinks button:hover::after{width:100%}
+.nav.light{color:var(--ink)}
+.nav.light .navlinks button::after{background:var(--ember)}
+
+/* ---------- BANDS ---------- */
+.band{padding:clamp(76px,10vw,150px) clamp(16px,4vw,54px);position:relative}
+.band.paper{background:var(--paper);color:var(--ink);border-top:1px solid var(--rule)}
+.band.alt{background:var(--band-b);color:var(--ink)}
+.band.void{background:transparent}
+.wrap{max-width:1260px;margin:0 auto;position:relative}
+.rule-label{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+  opacity:.5;margin-bottom:28px;display:flex;gap:16px;align-items:center;
+}
+.rule-label::after{content:"";flex:1;height:1px;background:currentColor;opacity:.25}
+
+/* ---------- HERO ---------- */
+.hero{
+  min-height:100svh;display:flex;flex-direction:column;justify-content:center;
+  padding-top:clamp(110px,14vh,180px);padding-bottom:70px;background:transparent;
+}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:clamp(20px,4vw,60px);align-items:center}
+.hero-art{position:relative;aspect-ratio:1/1.12;min-height:420px}
+#crossgl{position:absolute;inset:-20% -14%;width:128%;height:140%;display:block}
+.hero-art .ring{
+  position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);
+  width:min(62%,380px);aspect-ratio:1;border-radius:50%;
+  border:1px solid rgba(217,164,65,.18);pointer-events:none;
+  animation:spin 46s linear infinite;
+}
+.hero-art .ring::before,.hero-art .ring::after{
+  content:"";position:absolute;border-radius:50%;border:1px solid rgba(217,164,65,.1);
+}
+.hero-art .ring::before{inset:-9%}
+.hero-art .ring::after{inset:13%;border-style:dashed;border-color:rgba(217,164,65,.14)}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+.hero-art .arc{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.hero-art .arc text{
+  font-family:var(--mono);font-size:8.4px;letter-spacing:.42em;
+  fill:rgba(217,164,65,.5);text-transform:uppercase;
+}
+.hero-art .arc g{transform-origin:50% 50%;animation:spin 72s linear infinite reverse}
+@media(max-width:980px){
+  .hero .wrap{grid-template-columns:1fr}
+  .hero-art{order:-1;min-height:360px;aspect-ratio:1/.92;max-height:56vh}
+}
+.hero .eyebrow{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;
+  color:var(--gold);margin-bottom:26px;display:flex;align-items:center;gap:12px;
+  flex-wrap:wrap;                       /* .3em tracking overran 390px unwrapped */
+}
+.hero .eyebrow::before{content:"";width:44px;height:1px;background:var(--gold);flex:none}
+/* 52px was too large a floor: "ILLUMINED" alone is wider than a 360px phone,
+   which is what pushed the whole page into sideways scrolling. */
+.hero h1{font-weight:900;letter-spacing:-.05em;line-height:.82;
+  font-size:clamp(38px,9.4vw,148px);text-transform:uppercase}
+.hero h1 .l2{
+  display:block;
+  background:linear-gradient(100deg,var(--gold-lite),var(--gold) 30%,#8a5f18 52%,var(--gold-lite) 74%,var(--gold));
+  background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:sheen 7s linear infinite;
+  /* background-clip:text crops to the glyph box, and -.05em tracking pulls
+     the final D back inside it — the word rendered as "ILLUMINE". */
+  padding-right:.08em;width:fit-content;
+}
+@keyframes sheen{to{background-position:300% 0}}
+.hero h1 .l3{
+  display:block;font-family:var(--display);font-weight:300;font-style:italic;
+  text-transform:none;letter-spacing:-.01em;font-size:.34em;line-height:1.05;
+  margin-top:.16em;color:rgba(244,241,234,.62);
+}
+.hero-foot{margin-top:clamp(30px,4vw,48px);display:flex;flex-wrap:wrap;gap:24px 36px;align-items:flex-end}
+.hero-foot p{max-width:34ch;font-size:15px;line-height:1.62;color:rgba(244,241,234,.6)}
+.cta{
+  display:inline-flex;align-items:center;gap:12px;position:relative;overflow:hidden;
+  background:var(--paper);color:var(--ink);padding:17px 28px;border-radius:999px;
+  font-weight:700;font-size:13.5px;letter-spacing:.02em;box-shadow:0 0 0 0 rgba(217,164,65,.5);
+  transition:transform .35s cubic-bezier(.2,1.2,.3,1),box-shadow .4s;
+}
+.cta::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,var(--gold-lite),var(--gold));transform:translateY(101%);transition:transform .4s cubic-bezier(.2,1,.3,1)}
+.cta:hover::before{transform:translateY(0)}
+.cta span{position:relative;z-index:1}
+.cta:hover{transform:translateY(-4px);box-shadow:0 14px 40px -12px rgba(217,164,65,.55)}
+.cta .arw{transition:transform .35s}
+.cta:hover .arw{transform:translateX(6px)}
+.stats{display:flex;gap:clamp(18px,3vw,38px);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.5}
+.stats b{display:block;font-family:var(--display);font-size:32px;font-weight:400;letter-spacing:-.02em;opacity:1;margin-bottom:-2px;color:var(--gold)}
+
+/* ---------- ILLUMINATED PANEL (chapter plate) ---------- */
+.plate{
+  position:relative;border-radius:var(--r);overflow:hidden;
+  background:linear-gradient(160deg,#0b0c11,#131019 60%,#0b0c11);
+  border:1px solid rgba(217,164,65,.22);
+  padding:clamp(26px,3.4vw,44px);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);
+  gap:clamp(22px,3vw,44px);align-items:center;
+}
+.plate canvas{position:absolute;inset:0;width:100%;height:100%;opacity:.75}
+.plate .pcopy{position:relative;z-index:2}
+.plate h3{font-family:var(--display);font-weight:400;font-size:clamp(30px,4vw,54px);letter-spacing:-.02em;line-height:1.02;margin-bottom:14px;color:var(--paper)}
+.plate h3 em{font-style:italic;color:var(--gold)}
+.plate p{font-size:14.5px;line-height:1.7;color:rgba(244,241,234,.58);max-width:44ch}
+.plate .corner{position:absolute;width:56px;height:56px;border:1px solid rgba(217,164,65,.35);z-index:2}
+.plate .c1{top:14px;left:14px;border-right:0;border-bottom:0}
+.plate .c2{top:14px;right:14px;border-left:0;border-bottom:0}
+.plate .c3{bottom:14px;left:14px;border-right:0;border-top:0}
+.plate .c4{bottom:14px;right:14px;border-left:0;border-top:0}
+.plate .stage{position:relative;z-index:2;aspect-ratio:1/1;min-height:240px}
+.plate .stage canvas{opacity:1}
+@media(max-width:820px){.plate{grid-template-columns:1fr}.plate .stage{min-height:280px}}
+
+/* ---------- CROSS DIVIDER ---------- */
+.divider{display:flex;align-items:center;gap:20px;padding:clamp(30px,5vw,60px) 0;opacity:.85}
+.divider i{flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(217,164,65,.5),transparent)}
+.divider svg{width:26px;height:38px;flex:none;filter:drop-shadow(0 0 12px rgba(217,164,65,.55))}
+.scrollhint{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);font-family:var(--mono);font-size:9.5px;letter-spacing:.24em;text-transform:uppercase;opacity:.35;display:flex;flex-direction:column;align-items:center;gap:9px}
+.scrollhint i{width:1px;height:36px;background:linear-gradient(var(--gold),transparent);animation:drop 2.2s ease-in-out infinite}
+@keyframes drop{0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
+
+/* ---------- VERSE OF MOMENT ---------- */
+.vom{position:relative}
+.vom blockquote{
+  font-family:var(--display);font-weight:300;
+  font-size:clamp(30px,6vw,86px);line-height:1.1;letter-spacing:-.02em;max-width:19ch;
+}
+.vom blockquote em{font-style:italic;color:var(--gold);text-shadow:0 0 34px rgba(217,164,65,.4)}
+.vom .cite{font-family:var(--mono);font-size:11.5px;letter-spacing:.2em;opacity:.5;text-transform:uppercase;margin-top:28px}
+.vom-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:26px}
+.chip{
+  border:1px solid rgba(244,241,234,.2);border-radius:999px;padding:11px 20px;
+  font-size:12px;font-weight:600;letter-spacing:.03em;
+  transition:background .3s,border-color .3s,transform .3s,color .3s;
+}
+.chip:hover{background:var(--gold);border-color:var(--gold);color:#07080b;transform:translateY(-2px)}
+
+/* ---------- READER ---------- */
+.reader-grid{display:grid;grid-template-columns:minmax(0,280px) minmax(0,1fr);gap:clamp(18px,3vw,44px);align-items:start}
+.panel{background:rgba(255,255,255,.55);backdrop-filter:blur(10px);border:1px solid rgba(7,8,11,.07);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.search{width:100%;background:rgba(7,8,11,.05);border-radius:11px;padding:14px 16px;font-size:14px;font-family:var(--sans);outline:none;border:1.5px solid transparent;color:var(--ink);transition:border-color .25s,background .25s}
+.search:focus{border-color:var(--gold);background:#fff}
+.search::placeholder{color:rgba(7,8,11,.4)}
+.booklist{margin-top:12px;max-height:min(60vh,580px);overflow-y:auto;scrollbar-width:thin}
+.booklist::-webkit-scrollbar{width:5px}
+.booklist::-webkit-scrollbar-thumb{background:rgba(7,8,11,.22);border-radius:9px}
+.testa{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;opacity:.4;padding:16px 10px 8px}
+.bk{display:flex;justify-content:space-between;align-items:center;width:100%;padding:9px 12px;border-radius:10px;font-size:13.5px;font-weight:500;text-align:left;transition:background .2s,color .2s,padding-left .2s}
+.bk:hover{background:rgba(7,8,11,.06);padding-left:16px}
+.bk.active{background:var(--ink);color:var(--paper)}
+.bk.active span{color:var(--gold);opacity:1}
+.bk span{font-family:var(--mono);font-size:9.5px;opacity:.45}
+
+.readhead{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:20px}
+.readhead h2{font-family:var(--display);font-size:clamp(38px,6.4vw,76px);font-weight:400;letter-spacing:-.025em;line-height:.92}
+.readhead h2 small{display:block;font-family:var(--mono);font-size:10px;font-weight:400;letter-spacing:.2em;opacity:.45;text-transform:uppercase;margin-bottom:12px}
+.chapnav{display:flex;gap:8px;align-items:center}
+.rnd{width:44px;height:44px;border-radius:50%;background:rgba(7,8,11,.06);display:grid;place-items:center;transition:background .25s,transform .25s,color .25s}
+.rnd:hover{background:var(--ink);color:var(--gold);transform:translateY(-2px)}
+.rnd:disabled{opacity:.25;pointer-events:none}
+.chapsel{background:rgba(7,8,11,.06);border-radius:999px;padding:12px 16px;font-family:var(--mono);font-size:11.5px;font-weight:600;outline:none;border:none;cursor:pointer;color:var(--ink)}
+.chaptabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:24px}
+.ct{min-width:34px;height:34px;padding:0 9px;border-radius:9px;font-family:var(--mono);font-size:11.5px;background:rgba(7,8,11,.05);transition:background .2s,color .2s,transform .2s}
+.ct:hover{background:rgba(7,8,11,.14);transform:translateY(-2px)}
+.ct.on{background:var(--ink);color:var(--gold)}
+
+.verses{
+  background:rgba(255,255,255,.62);backdrop-filter:blur(10px);
+  border:1px solid rgba(7,8,11,.07);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:clamp(24px,3.6vw,56px);position:relative;overflow:hidden;
+}
+.verses::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.6;
+}
+.v{
+  font-family:var(--serif);font-size:clamp(17px,1.5vw,20px);line-height:1.78;
+  margin-bottom:14px;cursor:pointer;border-radius:9px;padding:5px 10px;margin-left:-10px;
+  transition:background .2s,box-shadow .2s;
+}
+.v:hover{background:rgba(217,164,65,.1)}
+.v.mark{background:rgba(217,164,65,.2);box-shadow:inset 3px 0 0 var(--gold)}
+.v b{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--gold);vertical-align:super;margin-right:8px;filter:brightness(.72)}
+/* illuminated drop cap on first verse */
+.v.first::first-letter{
+  font-family:var(--display);font-size:3.6em;line-height:.82;font-weight:600;
+  float:left;margin:.06em .1em 0 0;
+  background:linear-gradient(150deg,var(--gold-lite),var(--gold) 45%,#8a5f18);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 3px 14px rgba(217,164,65,.3);
+}
+.loading{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.42;padding:44px 0}
+.results .v b{color:var(--ember)}
+.res-src{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.5;display:block;margin-bottom:4px}
+
+/* ---------- TRIO ---------- */
+.trio{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:clamp(14px,2vw,24px)}
+.card{
+  position:relative;border-radius:var(--r);padding:clamp(26px,2.8vw,38px);overflow:hidden;
+  background:rgba(244,241,234,.045);border:1px solid rgba(244,241,234,.1);
+  transition:transform .45s cubic-bezier(.2,1,.3,1),border-color .45s,background .45s;
+}
+.card::after{
+  content:"";position:absolute;width:280px;height:280px;border-radius:50%;
+  background:radial-gradient(circle,rgba(217,164,65,.22),transparent 68%);
+  left:var(--mx,50%);top:var(--my,50%);transform:translate(-50%,-50%);
+  opacity:0;transition:opacity .4s;pointer-events:none;
+}
+.card:hover{transform:translateY(-7px);border-color:rgba(217,164,65,.4);background:rgba(244,241,234,.07)}
+.card:hover::after{opacity:1}
+.card .n{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--gold);margin-bottom:26px;display:block}
+.card h3{font-family:var(--display);font-size:clamp(30px,3.2vw,44px);font-weight:400;letter-spacing:-.02em;line-height:1;margin-bottom:14px}
+.card p{font-size:14px;line-height:1.68;color:rgba(244,241,234,.6)}
+
+/* ---------- CTA BAND ---------- */
+.ctaband h2{font-size:clamp(42px,9vw,124px);font-weight:900;letter-spacing:-.055em;line-height:.85;text-transform:uppercase}
+.ctaband h2 em{font-family:var(--display);font-style:italic;font-weight:300;text-transform:none;color:var(--ember)}
+.ctaband .row{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:40px}
+.band.alt .cta{background:var(--ink);color:var(--paper)}
+
+/* ---------- FOOTER ---------- */
+footer{background:var(--ink);color:var(--paper);padding:clamp(60px,8vw,100px) clamp(16px,4vw,54px) 0;overflow:hidden;position:relative;z-index:3}
+.fgrid{max-width:1260px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:34px;padding-bottom:56px}
+.fgrid h4{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:18px}
+.fgrid a,.fgrid p{display:block;font-size:13.5px;line-height:2;opacity:.68;transition:opacity .25s,transform .25s,color .25s}
+/* Footer links are wide but were only 27px tall — comfortably missable with
+   a thumb, and the last thing a reader wants to fight at the end of a page. */
+.fgrid a{display:flex;align-items:center;min-height:44px;line-height:1.4}
+.fgrid a:hover{opacity:1;transform:translateX(5px);color:var(--gold)}
+.legal{max-width:1260px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;opacity:.38;padding-bottom:24px;border-top:1px solid rgba(244,241,234,.1);padding-top:22px}
+.bigmark{
+  font-weight:900;letter-spacing:-.06em;text-transform:uppercase;
+  font-size:clamp(90px,25.5vw,420px);line-height:.7;margin-bottom:-.2em;white-space:nowrap;user-select:none;text-align:center;
+  background:linear-gradient(180deg,rgba(217,164,65,.28),rgba(244,241,234,.02));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+@media(max-width:860px){.reader-grid{grid-template-columns:1fr}.booklist{max-height:240px}}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .9s cubic-bezier(.2,.8,.3,1),transform .9s cubic-bezier(.2,.8,.3,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* ---------- DEVOTIONAL ---------- */
+.pager{display:flex;gap:8px;align-items:center}
+.devogrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,4vw,54px);align-items:start}
+.devoscript{position:relative}
+.devoscript .cite{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.55;margin-bottom:18px}
+.devoscript .verses{max-height:none}
+.devobody .dblock{border-top:1px solid var(--rule);padding:20px 0}
+.devobody .dblock:first-child{border-top:none;padding-top:0}
+.devobody .dk{font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;opacity:.5;display:block;margin-bottom:10px}
+.devobody p{font-family:var(--serif);font-size:clamp(15px,1.35vw,17px);line-height:1.72;font-weight:300}
+.devobody .gold p{color:#6b4b12}
+.devobody .gold .dk{color:var(--gold);opacity:.9}
+@media(max-width:880px){.devogrid{grid-template-columns:1fr;gap:26px}}
+
+/* ---------- TRANSLATION CHIP ---------- */
+.verchip{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;font-weight:600;
+  padding:8px 14px;border:1px solid currentColor;border-radius:999px;opacity:.55;
+  min-height:38px;transition:all .25s;
+}
+.verchip:hover{opacity:1}
+.verchip.esv{background:var(--gold);border-color:var(--gold);color:#07080b;opacity:1}
+
+/* ---------- KEY DIALOG ---------- */
+.sheet{position:fixed;inset:0;z-index:200;display:none;background:rgba(7,8,11,.8);
+  backdrop-filter:blur(8px);padding:20px;overflow-y:auto}
+.sheet.on{display:block}
+.sheet .box{max-width:560px;margin:8vh auto;background:var(--paper);color:var(--ink);
+  border-radius:var(--r);padding:clamp(22px,4vw,38px);box-shadow:var(--shadow)}
+.sheet h3{font-family:var(--display);font-size:clamp(26px,3vw,34px);font-weight:400;margin-bottom:14px}
+.sheet p{font-family:var(--serif);font-size:15px;line-height:1.68;font-weight:300;margin-bottom:14px}
+.sheet .row{display:flex;gap:10px;margin:18px 0 8px;flex-wrap:wrap}
+.sheet input{flex:1;min-width:200px;min-height:46px;padding:0 14px;border:1px solid var(--rule);
+  border-radius:10px;font-family:var(--mono);font-size:13px;background:#fff;color:var(--ink)}
+.sheet .go{min-height:46px;padding:0 20px;border-radius:10px;background:var(--ink);color:var(--paper);
+  font-weight:600;font-size:13px;letter-spacing:.04em}
+.sheet .x{float:right;font-size:26px;line-height:1;opacity:.4}
+.sheet .x:hover{opacity:1}
+.sheet small{font-family:var(--mono);font-size:11px;opacity:.55;display:block;margin-top:12px}
+
+/* ---------- STUDY ---------- */
+.secttl{font-family:var(--display);font-weight:400;font-size:clamp(30px,4.6vw,54px);
+  line-height:1.06;letter-spacing:-.02em;text-wrap:balance;margin:6px 0 14px}
+.sectlead{font-family:var(--serif);font-weight:300;font-size:clamp(15px,1.5vw,17.5px);
+  line-height:1.7;opacity:.7;max-width:62ch;margin-bottom:clamp(28px,4vw,48px)}
+.listen{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid currentColor;
+  font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.75}
+.listen:hover{opacity:1}
+
+/* The study band sits over the light burst, and nine cards of dense text
+   cannot compete with it. A vertical scrim holds the rays as atmosphere at
+   the edges while giving the content a ground to sit on. */
+#study{background:linear-gradient(180deg,
+  rgba(7,8,11,.30),rgba(7,8,11,.88) 16%,rgba(7,8,11,.90) 82%,rgba(7,8,11,.30))}
+
+.modgrid{display:grid;gap:clamp(16px,2.4vw,26px);
+  grid-template-columns:repeat(auto-fit,minmax(268px,1fr))}
+.modgroup{display:flex;flex-direction:column;gap:10px}
+.modkind{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  opacity:.42;padding-bottom:8px;border-bottom:1px solid rgba(244,241,234,.14);margin-bottom:4px}
+.modcard{display:block;text-align:left;padding:18px 20px;border-radius:var(--r);
+  border:1px solid rgba(244,241,234,.16);background:rgba(7,8,11,.55);
+  transition:background .25s,border-color .25s,transform .25s;min-height:44px}
+.modcard:hover{background:rgba(7,8,11,.72);border-color:var(--gold);transform:translateY(-2px)}
+.modcard:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.modcard b{display:block;font-size:16px;font-weight:700;letter-spacing:-.01em;margin-bottom:6px}
+.modcard span{display:block;font-family:var(--serif);font-weight:300;font-size:14px;
+  line-height:1.6;opacity:.6}
+
+/* The study sheet is wider than the key dialog: these modules are worked in,
+   not read once. Everything inside sits on paper, so it uses ink tokens. */
+.sheet.study .box{max-width:820px}
+.sheet .sub{font-family:var(--mono);font-size:11.5px;line-height:1.6;letter-spacing:.02em;
+  text-transform:none;opacity:.5;margin:-6px 0 22px}
+#studyBody{display:flex;flex-direction:column;gap:12px}
+.sx-lead{font-family:var(--serif);font-size:15px;line-height:1.68;font-weight:300;opacity:.72}
+.sx-eyebrow{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;opacity:.45;margin-bottom:10px}
+.sx-q{font-family:var(--sans)!important;font-weight:600;font-size:15.5px;line-height:1.55;
+  margin:0 0 12px!important}
+
+.sx-rail{display:flex;gap:5px;margin:4px 0 6px}
+.sx-rail i{flex:1;height:3px;border-radius:2px;background:rgba(7,8,11,.12);transition:background .4s}
+.sx-rail i.lit{background:var(--gold)}
+
+.sx-slots{display:flex;flex-wrap:wrap;gap:9px}
+.sx-two{display:grid;gap:9px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.sx-col{display:flex;flex-direction:column;gap:9px}
+.sx-card{display:flex;flex-direction:column;gap:3px;text-align:left;min-height:44px;
+  padding:12px 15px;border-radius:11px;border:1px solid rgba(7,8,11,.16);
+  background:#fff;color:var(--ink);transition:border-color .2s,background .2s,opacity .3s}
+.sx-card strong{font-size:14px;font-weight:600;line-height:1.35}
+.sx-card small{font-family:var(--mono);font-size:10.5px;opacity:.5;margin:0}
+.sx-card:hover:not(:disabled){border-color:var(--gold)}
+.sx-card.picked{border-color:var(--gold);background:rgba(217,164,65,.14)}
+.sx-card.placed{border-color:rgba(217,164,65,.6);background:rgba(217,164,65,.16);
+  opacity:.85;cursor:default}
+.sx-card:disabled{cursor:default}
+.sx-card.wrong{animation:sxshake .34s}
+@keyframes sxshake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}
+  75%{transform:translateX(5px)}}
+
+.sx-tiles{display:flex;flex-wrap:wrap;gap:7px}
+.sx-tile{min-height:44px;padding:0 14px;border-radius:9px;border:1px solid rgba(7,8,11,.16);
+  background:#fff;color:var(--ink);font-size:14px;font-weight:500}
+.sx-tile:hover:not(:disabled){border-color:var(--gold)}
+.sx-tile.used{opacity:.28;cursor:default}
+.sx-tile.wrong{animation:sxshake .34s}
+.sx-line{font-family:var(--serif);font-size:18px;line-height:1.6;min-height:52px;
+  padding:14px 16px;border-radius:11px;background:rgba(7,8,11,.05);
+  border:1px solid rgba(7,8,11,.1)}
+.sx-line span{opacity:0;transition:opacity .45s}
+.sx-line span.lit{opacity:1}
+.sx-line.done{border-color:var(--gold);background:rgba(217,164,65,.13)}
+
+.sx-opt{display:block;width:100%;text-align:left;min-height:44px;padding:12px 15px;
+  border-radius:11px;border:1px solid rgba(7,8,11,.16);background:#fff;color:var(--ink);
+  font-size:14.5px;line-height:1.5;margin-bottom:8px}
+.sx-opt:hover{border-color:var(--gold)}
+.sx-opt.correct{border-color:rgba(15,122,82,.55);background:rgba(15,122,82,.13);color:#0b5c3d}
+.sx-opt.miss{border-color:rgba(176,42,42,.5);background:rgba(176,42,42,.11);color:#8c1d1d}
+.sx-explain{font-family:var(--serif);font-size:14.5px;line-height:1.68;font-weight:300;
+  padding:14px 16px;border-radius:11px;background:rgba(7,8,11,.05);margin-top:4px}
+.sx-go{min-height:46px;padding:0 22px;border-radius:10px;background:var(--ink);color:var(--paper);
+  font-weight:600;font-size:13px;letter-spacing:.04em;margin-top:14px}
+
+.sx-block{padding:14px 16px;border-radius:11px;background:rgba(7,8,11,.045);
+  border-left:2px solid rgba(7,8,11,.18)}
+.sx-block.lead{border-left-color:var(--gold);background:rgba(217,164,65,.1)}
+.sx-block.christ{border-left-color:var(--gold);background:rgba(217,164,65,.1)}
+.sx-block .kind{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;opacity:.5;margin-bottom:7px}
+.sx-block p{font-family:var(--serif);font-size:14.5px;line-height:1.68;font-weight:300;margin:0!important}
+.sx-block p.quote{font-style:italic}
+
+.sx-acc{border:1px solid rgba(7,8,11,.13);border-radius:11px;overflow:hidden}
+.sx-acc>button{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  width:100%;text-align:left;min-height:52px;padding:12px 16px;background:#fff}
+.sx-acc>button b{font-size:14.5px;font-weight:600}
+.sx-acc>button small{font-family:var(--mono);font-size:10.5px;opacity:.5;margin:0;flex:none}
+.sx-acc.open>button{background:rgba(217,164,65,.1)}
+.sx-acc .inner{display:flex;flex-direction:column;gap:9px;padding:12px 16px 16px}
+
+.sx-books{display:grid;gap:7px;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));
+  margin-bottom:14px}
+.sx-mini{text-align:left;min-height:56px;padding:10px 12px;border-radius:9px;
+  border:1px solid rgba(7,8,11,.14);background:#fff;color:var(--ink)}
+.sx-mini b{display:block;font-size:12.5px;font-weight:600;line-height:1.3}
+.sx-mini span{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;opacity:.45}
+.sx-mini.ot{background:rgba(7,8,11,.04)}
+.sx-mini:hover{border-color:var(--gold)}
+.sx-mini.on{border-color:var(--gold);background:rgba(217,164,65,.16)}
+
+.sx-map{display:block;width:100%;height:clamp(240px,42vw,340px);border-radius:12px;
+  margin-bottom:6px}
+
+.sx-result{padding:20px;border-radius:12px;text-align:center;
+  background:rgba(217,164,65,.13);border:1px solid rgba(217,164,65,.4)}
+.sx-result .big{font-size:26px;color:var(--gold);margin-bottom:8px}
+.sx-result p{font-family:var(--serif);font-size:14.5px;line-height:1.68;font-weight:300;margin:0!important}
+
+@media (prefers-reduced-motion:reduce){
+  .sx-card,.sx-tile{animation:none!important}
+  .modcard{transition:none}
+}
+
+/* ================= POLISH =================
+   Fixes found by auditing the rendered page rather than the source. */
+
+/* --- 1. The hero sat inside its own light source ---
+   The god-rays peak exactly where the eyebrow, the standfirst and the stats
+   sit, and gold-on-gold at 50% opacity is not readable. A soft radial scrim
+   behind the copy column keeps the rays as atmosphere without dimming the
+   burst itself, and the dimmest text moves up to a legible weight. */
+.hero .wrap::before{
+  content:"";position:absolute;inset:-8% -6% -4% -8%;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 90% at 26% 52%,rgba(7,8,11,.82),rgba(7,8,11,.52) 46%,transparent 76%);
+}
+.hero-foot p{color:rgba(244,241,234,.78)}
+.hero h1 .l3{color:rgba(244,241,234,.76)}
+.stats{opacity:.78}
+.hero .eyebrow{color:var(--gold-lite);text-shadow:0 2px 14px rgba(7,8,11,.75)}
+
+/* --- 2. Tap targets ---
+   The audit found controls between 26px and 38px tall. 44px is the floor at
+   which a thumb hits what it aims at. */
+.verchip{min-width:44px;min-height:44px;padding:0 12px}
+.bk{min-height:44px;padding:11px 12px}
+.ct{min-width:44px;min-height:44px}
+.vom-actions .btn,.vom-actions button{min-height:44px}
+.wordmark{min-height:44px}
+
+/* --- 3. The nav ran off the right edge on every phone screen ---
+   Wordmark + four links + the chip needed 447px in a 390px viewport, so
+   "About" was clipped and the translation chip was off-screen entirely.
+   Below 760px the type tightens; below 560px the wordmark keeps its sigil
+   and drops its text, which is the only element that can go. */
+@media(max-width:760px){
+  .nav{padding:12px 14px}
+  .navlinks{gap:14px;font-size:11px}
+  .wordmark{font-size:14px;gap:8px}
+}
+@media(max-width:560px){
+  .navlinks{gap:11px;font-size:10.5px;letter-spacing:.02em}
+  .wordmark span:not(.sig){display:none}   /* the mark still identifies it */
+  .wordmark{gap:0}
+}
+
+/* --- 4. Nothing may scroll sideways ---
+   A phone that drifts horizontally feels broken no matter how good the type
+   is. This is the backstop; the fixes above are the actual causes. */
+html,body{max-width:100%;overflow-x:hidden}
+
+@media(max-width:560px){
+  /* The hero art was taking three-quarters of the first screen and pushing
+     the headline off the bottom. */
+  .hero-art{min-height:240px;max-height:36vh}
+  .hero{padding-top:clamp(84px,12vh,120px)}
+  .hero .eyebrow{letter-spacing:.18em;margin-bottom:18px}
+  .hero-foot{gap:18px 22px}
+}
+
+/* --- 5. A scroll region inside a scrolling page traps the thumb ---
+   240px of book list meant scrolling the list to reach Revelation while the
+   page itself wanted to move. Taller on phones, so most of it is one gesture. */
+@media(max-width:860px){
+  .booklist{max-height:min(56vh,420px)}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="grain"></canvas>
+
+<div class="page">
+<nav class="nav" id="nav">
+  <a href="#" class="wordmark"><span class="sig"></span><span>Verselight</span></a>
+  <div class="navlinks">
+    <button data-go="devotional">Today</button>
+  <button data-go="read">Read</button>
+    <button data-go="search">Search</button>
+    <button data-go="about">About</button>
+  <button id="verChip" class="verchip" title="Bible translation — add the ESV">KJV</button>
+  </div>
+</nav>
+
+<section class="band void hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">English Standard Version · King James offline</div>
+      <h1>The Word<span class="l2">Illumined</span><span class="l3">Sixty-six books. Thirty-one thousand verses. Nothing between you and the text.</span></h1>
+      <div class="hero-foot">
+        <p>A complete Bible that opens instantly, reads beautifully, and searches every verse in a blink.</p>
+        <a class="cta" href="#read"><span>Start reading</span><span class="arw">→</span></a>
+      </div>
+      <div class="stats" style="margin-top:34px">
+        <div><b id="s1">66</b>Books</div>
+        <div><b id="s2">1189</b>Chapters</div>
+        <div><b id="s3">31k</b>Verses</div>
+      </div>
+    </div>
+    <div class="hero-art">
+      <canvas id="crossgl"></canvas>
+      <div class="ring"></div>
+      <svg class="arc" viewBox="0 0 400 400" aria-hidden="true">
+        <defs><path id="arcpath" d="M200,200 m-158,0 a158,158 0 1,1 316,0 a158,158 0 1,1 -316,0"/></defs>
+        <g><text><textPath href="#arcpath" startOffset="0%">In the beginning was the Word · and the Word was with God · </textPath></text></g>
+      </svg>
+    </div>
+  </div>
+  <div class="scrollhint"><i></i>Scroll</div>
+</section>
+
+<section class="band void reveal">
+  <div class="wrap">
+    <div class="divider">
+      <i></i>
+      <svg viewBox="0 0 26 38" fill="none"><path d="M13 1v36M2 11h22" stroke="#d9a441" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <i></i>
+    </div>
+    <div class="plate">
+      <canvas id="plategl"></canvas>
+      <span class="corner c1"></span><span class="corner c2"></span>
+      <span class="corner c3"></span><span class="corner c4"></span>
+      <div class="pcopy">
+        <div class="rule-label" style="opacity:.6;color:var(--gold)">The Illuminated Codex</div>
+        <h3>Every chapter opens like a <em>gilded manuscript</em>.</h3>
+        <p>Gold-leaf drop caps, a real serif measure, and light that moves with you. Scripture rendered the way scribes intended — only faster, and in your pocket.</p>
+      </div>
+      <div class="stage"><canvas id="bookgl"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<section class="band void reveal">
+  <div class="wrap vom">
+    <div class="rule-label">Verse of the moment</div>
+    <blockquote id="vomText">And God said, Let there be <em>light</em>: and there was light.</blockquote>
+    <div class="cite" id="vomCite">Genesis 1:3</div>
+    <div class="vom-actions">
+      <button class="chip" id="vomNew">Another verse</button>
+      <button class="chip" id="vomOpen">Open in reader</button>
+    </div>
+  </div>
+</section>
+
+
+<section class="band alt reveal" id="devotional">
+  <div class="wrap">
+    <div class="rule-label">The Descending Light &middot; a year in the Word</div>
+    <div class="readhead">
+      <h2><small id="devoArc">Day 1 of 365</small><span id="devoTitle">&nbsp;</span></h2>
+      <div class="pager">
+        <button class="listen" id="listenBtn">Listen</button>
+        <button class="rnd" id="devoPrev" aria-label="Previous day">&larr;</button>
+        <button class="rnd" id="devoToday" title="Today">&#9737;</button>
+        <button class="rnd" id="devoNext" aria-label="Next day">&rarr;</button>
+      </div>
+    </div>
+    <div class="devogrid">
+      <div class="devoscript">
+        <div class="cite" id="devoRef">&nbsp;</div>
+        <div class="verses" id="devoVerses"><div class="loading">Loading&hellip;</div></div>
+      </div>
+      <div class="devobody">
+        <div class="dblock"><span class="dk">Reflection</span><p id="devoReflection"></p></div>
+        <div class="dblock gold"><span class="dk">Prayer</span><p id="devoPrayer"></p></div>
+        <div class="dblock"><span class="dk">Today</span><p id="devoAction"></p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band paper reveal" id="read">
+  <div class="wrap">
+    <div class="rule-label">The Reader</div>
+    <div class="reader-grid">
+      <aside class="panel">
+        <input class="search" id="bookFilter" placeholder="Filter books…" autocomplete="off">
+        <div class="booklist" id="booklist"></div>
+      </aside>
+      <main>
+        <div class="readhead">
+          <h2><small id="crumb">Old Testament</small><span id="bookTitle">Genesis</span></h2>
+          <div class="chapnav">
+            <button class="rnd" id="prev" aria-label="Previous chapter">←</button>
+            <select class="chapsel" id="chapsel"></select>
+            <button class="rnd" id="next" aria-label="Next chapter">→</button>
+          </div>
+        </div>
+        <div class="chaptabs" id="chaptabs"></div>
+        <div class="verses" id="verses"><div class="loading">Loading…</div></div>
+      </main>
+    </div>
+  </div>
+</section>
+
+<section class="band void reveal" id="study">
+  <div class="wrap">
+    <div class="rule-label">Study &middot; nine ways into the text</div>
+    <h2 class="secttl">Read it, then work it.</h2>
+    <p class="sectlead">Reference for the whole canon, drills for the disciplines a teacher needs,
+      and three games built for children &mdash; because the family that reads together
+      should be able to play together too.</p>
+
+    <div class="modgrid">
+      <div class="modgroup">
+        <span class="modkind">Reference</span>
+        <button class="modcard" data-module="books">
+          <b>The Sixty-Six</b><span>Every book: theme, key verse, main lessons, and where it points to Christ.</span></button>
+        <button class="modcard" data-module="teachings">
+          <b>The Teachings of Jesus</b><span>The Sermon, the parables, the seven I AMs, the miracles, His final words.</span></button>
+        <button class="modcard" data-module="maps">
+          <b>The Acts 1:8 Dispatch</b><span>Concentric commission &mdash; the gospel moving outward from where you stand.</span></button>
+      </div>
+      <div class="modgroup">
+        <span class="modkind">Discipline</span>
+        <button class="modcard" data-module="exegesis">
+          <b>Exegesis Training</b><span>Observation, then interpretation, then application &mdash; drilled in that order.</span></button>
+        <button class="modcard" data-module="chronology">
+          <b>Testament Illuminations</b><span>Eleven epochs of redemptive history, placed in order.</span></button>
+        <button class="modcard" data-module="concordance">
+          <b>Redemptive Threads</b><span>One theme traced across both testaments, in canonical order.</span></button>
+      </div>
+      <div class="modgroup">
+        <span class="modkind">For children</span>
+        <button class="modcard" data-module="creation">
+          <b>The Creation Adventure</b><span>Seven days, in the order God spoke them.</span></button>
+        <button class="modcard" data-module="heroes">
+          <b>Heroes of Faith</b><span>Match each name to the brave thing God helped them do.</span></button>
+        <button class="modcard" data-module="verse">
+          <b>Build the Verse</b><span>Every word in its place, then the whole verse lights up.</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt reveal" id="search">
+  <div class="wrap">
+    <div class="rule-label">Full-text search</div>
+    <div class="readhead"><h2><small>Find any phrase</small>Search</h2></div>
+    <div class="panel" style="margin-bottom:20px">
+      <input class="search" id="q" placeholder="Type a word or phrase, then press Enter…" autocomplete="off">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="ct" data-ex="light">light</button>
+        <button class="ct" data-ex="mercy endureth">mercy endureth</button>
+        <button class="ct" data-ex="fear not">fear not</button>
+        <button class="ct" data-ex="shepherd">shepherd</button>
+      </div>
+    </div>
+    <div class="verses results" id="results"><div class="loading">Awaiting a query</div></div>
+  </div>
+</section>
+
+<section class="band void reveal" id="about">
+  <div class="wrap">
+    <div class="rule-label">Why it feels different</div>
+    <div class="trio">
+      <div class="card"><span class="n">01</span><h3>Instant</h3><p>Chapters load from local data. No spinners, no accounts, no waiting on a server halfway around the world.</p></div>
+      <div class="card"><span class="n">02</span><h3>Illuminated</h3><p>Typeset for long reading — generous measure, real serif body text, gilded drop caps at every chapter opening.</p></div>
+      <div class="card"><span class="n">03</span><h3>Yours</h3><p>Tap any verse to gild it. Marks are saved on your device and survive a refresh. Nothing ever leaves the browser.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt ctaband reveal">
+  <div class="wrap">
+    <h2>Open it.<br><em>Read one chapter.</em></h2>
+    <div class="row">
+      <a class="cta" href="#read"><span>Go to Genesis 1</span><span class="arw">→</span></a>
+      <span style="font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;opacity:.5">Works offline · Free forever</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="fgrid">
+    <div><h4>Verselight</h4><p style="opacity:.55;max-width:26ch">Scripture, illuminated. Built for readers who want the text and nothing else.</p></div>
+    <div><h4>Read</h4><a href="#read">Reader</a><a href="#search">Search</a><a href="#" id="randomLink">Random chapter</a></div>
+    <div><h4>Project</h4><a href="#about">About</a><a href="#devotional">Today's reading</a><a href="#" id="verLink">Translation</a></div>
+    <div><h4>Text</h4><p style="opacity:.55">King James Version, public domain. 66 books, 1,189 chapters.</p></div>
+  </div>
+  <div class="legal"><span>© 2026 Verselight</span><span>Public domain text</span></div>
+  <div class="bigmark">VERSELIGHT</div>
+</footer>
+</div>
+
+<script type="module" src="./bg.js"></script>
+<script type="module" src="./cross.js"></script>
+<script type="module" src="./plate.js"></script>
+<script type="module" src="./app.js"></script>
+<script type="module" src="./esv.js"></script>
+<script type="module" src="./devotional.js"></script>
+<script type="module" src="./study.js"></script>
+<div class="sheet" id="keySheet">
+  <div class="box">
+    <button class="x" id="keyClose">&times;</button>
+    <h3>Bible translation</h3>
+    <p>Two translations, and Verselight moves between them on its own. With a signal you read the <b>English Standard Version</b>. Without one you read the <b>King James Version</b> &mdash; all 66 books, 31,102 verses, already stored on this device.</p>
+    <p>That split is a licensing boundary, not a technical one. The KJV is public domain worldwide, which is what lets Verselight be passed phone to phone and stay legal at every hop. Crossway&rsquo;s ESV API is free for non-commercial use but caps local storage at 500 verses, so the ESV cannot live on the device &mdash; it is fetched as you read and never written to storage.</p>
+    <p>Nothing is required of you. If you would rather the requests count against your own Crossway account, put your key here &mdash; get one at <b>api.esv.org</b>. Leave it empty to use Verselight&rsquo;s.</p>
+    <div class="row">
+      <input id="keyInput" placeholder="Your own ESV key (optional)" autocomplete="off">
+      <button class="go" id="keySave">Save</button>
+    </div>
+    <small id="keyStatus">Reading the ESV. No key needed &mdash; Verselight supplies one.</small>
+  </div>
+</div>
+
+<div class="sheet study" id="studySheet">
+  <div class="box">
+    <button class="x" id="studyClose">&times;</button>
+    <h3 id="studyTitle">&nbsp;</h3>
+    <p class="sub" id="studySub">&nbsp;</p>
+    <div id="studyBody"></div>
+  </div>
+</div>
+<script>
+/* Register the service worker so Verselight can be installed to a home
+   screen and keep working with no signal. */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
+
+===== FILE: src/app.js (12.6 KB) =====
+
+import { ESV } from './esv.js';
+
+/* Verselight — reader, search, and interaction layer */
+
+const BOOKS=[
+["Genesis",50],["Exodus",40],["Leviticus",27],["Numbers",36],["Deuteronomy",34],
+["Joshua",24],["Judges",21],["Ruth",4],["1 Samuel",31],["2 Samuel",24],
+["1 Kings",22],["2 Kings",25],["1 Chronicles",29],["2 Chronicles",36],["Ezra",10],
+["Nehemiah",13],["Esther",10],["Job",42],["Psalms",150],["Proverbs",31],
+["Ecclesiastes",12],["Song of Solomon",8],["Isaiah",66],["Jeremiah",52],["Lamentations",5],
+["Ezekiel",48],["Daniel",12],["Hosea",14],["Joel",3],["Amos",9],
+["Obadiah",1],["Jonah",4],["Micah",7],["Nahum",3],["Habakkuk",3],
+["Zephaniah",3],["Haggai",2],["Zechariah",14],["Malachi",4],
+["Matthew",28],["Mark",16],["Luke",24],["John",21],["Acts",28],
+["Romans",16],["1 Corinthians",16],["2 Corinthians",13],["Galatians",6],["Ephesians",6],
+["Philippians",4],["Colossians",4],["1 Thessalonians",5],["2 Thessalonians",3],["1 Timothy",6],
+["2 Timothy",4],["Titus",3],["Philemon",1],["Hebrews",13],["James",5],
+["1 Peter",5],["2 Peter",3],["1 John",5],["2 John",1],["3 John",1],
+["Jude",1],["Revelation",22]
+];
+const NT_START=40;
+const $ = id => document.getElementById(id);
+
+const cache={};
+let cur={b:1,c:1};
+let marks=JSON.parse(localStorage.getItem('vl_marks')||'{}');
+
+async function getBook(b){
+  if(cache[b])return cache[b];
+  const paths=[`data/books/${b}.json`,`./data/books/${b}.json`];
+  for(const p of paths){
+    try{
+      const r=await fetch(p);
+      if(!r.ok)continue;
+      cache[b]=await r.json();
+      return cache[b];
+    }catch(e){}
+  }
+  cache[b]={b,rows:[],missing:true};
+  return cache[b];
+}
+
+/* Warm the rest of Scripture quietly in the background, one book at a time,
+   so the first search has nothing left to fetch. The whole Bible is 4.4 MB —
+   fine over wifi, rude over a metered phone connection — so this is skipped
+   entirely when the browser reports Data Saver or a slow network, and the
+   search still works without it. */
+function warmScripture(){
+  const c=navigator.connection;
+  if(c&&(c.saveData||/2g|slow/.test(c.effectiveType||'')))return;
+  let b=1;
+  const next=()=>{
+    while(b<=66&&cache[b])b++;
+    if(b>66)return;
+    getBook(b++).then(()=>{
+      /* requestIdleCallback keeps this behind anything the reader is doing. */
+      (window.requestIdleCallback||((f)=>setTimeout(f,300)))(next,{timeout:2000});
+    });
+  };
+  next();
+}
+addEventListener('load',()=>setTimeout(warmScripture,2500));
+
+/* ---------- sidebar ---------- */
+const booklist=$('booklist');
+function renderBooks(filter=''){
+  const f=filter.trim().toLowerCase();
+  let html='',ot=false,nt=false;
+  BOOKS.forEach((bk,i)=>{
+    const id=i+1;
+    if(f&&!bk[0].toLowerCase().includes(f))return;
+    if(!ot&&id<NT_START){html+='<div class="testa">Old Testament</div>';ot=true;}
+    if(!nt&&id>=NT_START){html+='<div class="testa">New Testament</div>';nt=true;}
+    html+=`<button class="bk ${cur.b===id?'active':''}" data-b="${id}">${bk[0]}<span>${bk[1]}</span></button>`;
+  });
+  booklist.innerHTML=html||'<div class="testa">No match</div>';
+}
+booklist.addEventListener('click',e=>{
+  const b=e.target.closest('.bk');
+  if(b)openChapter(+b.dataset.b,1);
+});
+$('bookFilter').addEventListener('input',e=>renderBooks(e.target.value));
+
+/* ---------- reader ---------- */
+const versesEl=$('verses'), chaptabs=$('chaptabs'), chapsel=$('chapsel');
+
+async function openChapter(b,c,scroll=true){
+  cur={b,c};
+  const meta=BOOKS[b-1];
+  $('bookTitle').textContent=meta[0];
+  $('crumb').textContent=(b<NT_START?'Old Testament':'New Testament')+' · Chapter '+c;
+  renderBooks($('bookFilter').value);
+  chapsel.innerHTML=Array.from({length:meta[1]},(_,i)=>`<option value="${i+1}" ${i+1===c?'selected':''}>Ch. ${i+1}</option>`).join('');
+  chaptabs.innerHTML=Array.from({length:meta[1]},(_,i)=>`<button class="ct ${i+1===c?'on':''}" data-c="${i+1}">${i+1}</button>`).join('');
+  $('prev').disabled=(b===1&&c===1);
+  $('next').disabled=(b===66&&c===meta[1]);
+  versesEl.innerHTML='<div class="loading">Loading '+meta[0]+' '+c+'…</div>';
+
+  const data=await getBook(b);
+  if(cur.b!==b||cur.c!==c)return;
+  if(data.missing){
+    /* A filename is not an explanation. This happens in the sample build,
+       which carries only some books on purpose, so say which book is not
+       here rather than which file failed. */
+    versesEl.innerHTML='<div class="loading">'+meta[0]+' is not included in this edition.</div>';
+    return;
+  }
+  const paint=(rws,note)=>{
+    versesEl.innerHTML=rws.length
+      ? rws.map((r,i)=>{
+          const k=b+':'+c+':'+r[1];
+          return `<div class="v ${i===0?'first':''} ${marks[k]?'mark':''}" data-k="${k}" style="--i:${i}"><b>${r[1]}</b>${r[2]}</div>`;
+        }).join('') + (note?`<div class="loading" style="text-align:left;opacity:.45;font-size:11px;margin-top:18px">${note}</div>`:'')
+      : '<div class="loading">Chapter not found</div>';
+  };
+  const rows=(data.rows||[]).filter(r=>r[0]===c);
+  paint(rows,null);
+
+  /* With a key and a signal, re-render the same chapter in ESV. */
+  ESV.rows(meta[0]+' '+c, c).then(esvRows=>{
+    if(!esvRows||cur.b!==b||cur.c!==c)return;
+    paint(esvRows, ESV.NOTICE);
+    bindVerseTaps();
+  });
+
+  function bindVerseTaps(){}
+  versesEl.querySelectorAll('.v').forEach((el,i)=>{
+    el.animate(
+      [{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'none'}],
+      {duration:520,delay:Math.min(i*22,700),easing:'cubic-bezier(.2,.8,.3,1)',fill:'backwards'}
+    );
+  });
+  localStorage.setItem('vl_last',b+':'+c);
+  if(scroll)$('read').scrollIntoView({behavior:'smooth'});
+}
+
+chaptabs.addEventListener('click',e=>{const t=e.target.closest('.ct');if(t)openChapter(cur.b,+t.dataset.c,false)});
+chapsel.addEventListener('change',e=>openChapter(cur.b,+e.target.value,false));
+versesEl.addEventListener('click',e=>{
+  const v=e.target.closest('.v');
+  if(!v||!v.dataset.k)return;
+  const k=v.dataset.k;
+  if(marks[k]){delete marks[k];v.classList.remove('mark')}
+  else{marks[k]=1;v.classList.add('mark');window.verselightPulse&&window.verselightPulse()}
+  localStorage.setItem('vl_marks',JSON.stringify(marks));
+});
+$('prev').onclick=()=>{
+  if(cur.c>1)openChapter(cur.b,cur.c-1,false);
+  else if(cur.b>1)openChapter(cur.b-1,BOOKS[cur.b-2][1],false);
+};
+$('next').onclick=()=>{
+  if(cur.c<BOOKS[cur.b-1][1])openChapter(cur.b,cur.c+1,false);
+  else if(cur.b<66)openChapter(cur.b+1,1,false);
+};
+addEventListener('keydown',e=>{
+  if(document.activeElement.tagName==='INPUT')return;
+  if(e.key==='ArrowLeft')$('prev').click();
+  if(e.key==='ArrowRight')$('next').click();
+});
+
+/* ---------- search ---------- */
+const resultsEl=$('results');
+let searchRun=0;
+async function runSearch(q){
+  q=q.trim().toLowerCase();
+  if(q.length<2){resultsEl.innerHTML='<div class="loading">Type at least two characters</div>';return}
+  const run=++searchRun;
+
+  const rx=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','ig');
+  const head=(n,done)=>`${n}${n>=200?'+':''} result${n===1?'':'s'}${done?'':' so far…'}`;
+  const row=([b,c,v,t])=>`<div class="v" data-open="${b}|${c}">
+      <span class="res-src">${BOOKS[b-1][0]} ${c}:${v}</span>${t.replace(rx,'<mark style="background:rgba(217,164,65,.35);color:inherit">$1</mark>')}</div>`;
+
+  /* Scanning all thirty-one thousand verses takes about ten milliseconds.
+     Every await, by contrast, hands a turn back to the event loop, where the
+     WebGL loops are waiting to paint — so the old version spent seconds
+     yielding and no measurable time searching. When the books are already in
+     memory the whole search therefore runs in one synchronous pass with no
+     yields at all, and paints once. */
+  const missing=[];
+  for(let b=1;b<=66;b++) if(!cache[b]) missing.push(b);
+
+  const scan=()=>{
+    let found=0,html='';
+    for(let b=1;b<=66;b++){
+      const d=cache[b];
+      if(!d)continue;
+      for(const r of d.rows||[]){
+        if(found>=200)return{found,html,capped:true};
+        if(r[2].toLowerCase().includes(q)){found++;html+=row([b,r[0],r[1],r[2]])}
+      }
+    }
+    return{found,html,capped:false};
+  };
+
+  const paint=(res,done)=>{
+    if(!res.found&&done){
+      resultsEl.innerHTML='<div class="loading">No verses matched “'+q+'”</div>';
+      return;
+    }
+    const n=res.found;
+    resultsEl.innerHTML=
+      `<div class="loading" style="padding:0 0 22px">${head(n,done)}</div>`+res.html;
+  };
+
+  if(!missing.length){                       // warm: one pass, one paint
+    const res=scan();
+    paint(res,true);
+    if(res.found)window.verselightPulse&&window.verselightPulse();
+    return;
+  }
+
+  /* Cold: every request goes out at once rather than in batches, and the
+     list is repainted as books land so Genesis matches show while Revelation
+     is still in flight. */
+  resultsEl.innerHTML='<div class="loading">Searching all 66 books…</div>';
+  const inflight=missing.map(b=>getBook(b).then(()=>b));
+  let pulsed=false,lastPaint=0,capped=false;
+  for(let i=0;i<inflight.length&&!capped;i++){
+    await inflight[i];
+    if(run!==searchRun)return;                            // query moved on
+    /* Rescanning is cheap but not free, so intermediate paints are throttled
+       to roughly five a second — enough to feel live, few enough that the
+       progress display never costs more than the search. */
+    const now=performance.now();
+    if(now-lastPaint<180&&i<inflight.length-1)continue;
+    lastPaint=now;
+    const res=scan();
+    paint(res,false);
+    capped=res.capped;
+    if(res.found&&!pulsed){pulsed=true;window.verselightPulse&&window.verselightPulse()}
+  }
+  if(run!==searchRun)return;
+  paint(scan(),true);
+}
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter')runSearch(e.target.value)});
+document.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>{$('q').value=b.dataset.ex;runSearch(b.dataset.ex)});
+resultsEl.addEventListener('click',e=>{
+  const v=e.target.closest('[data-open]');
+  if(!v)return;
+  const [b,c]=v.dataset.open.split('|').map(Number);
+  openChapter(b,c);
+});
+
+/* ---------- verse of the moment ---------- */
+const PICKS=[[1,1,3],[19,23,1],[43,3,16],[45,8,28],[23,40,31],[20,3,5],[19,46,1],[40,5,14],[50,4,13],[19,119,105],[23,9,2],[66,21,4]];
+async function vom(){
+  const [b,c,v]=PICKS[Math.floor(Math.random()*PICKS.length)];
+  const d=await getBook(b);
+  const row=(d.rows||[]).find(r=>r[0]===c&&r[1]===v);
+  if(!row)return;
+  const el=$('vomText');
+  el.style.opacity=0;
+  setTimeout(()=>{
+    el.innerHTML=row[2].replace(/\b(light|love|faith|hope|strength|peace|joy|glory|life)\b/i,'<em>$1</em>');
+    $('vomCite').textContent=`${BOOKS[b-1][0]} ${c}:${v}`;
+    el.style.transition='opacity .6s';
+    el.style.opacity=1;
+    window.verselightPulse&&window.verselightPulse();
+  },220);
+  $('vomOpen').onclick=()=>openChapter(b,c);
+}
+$('vomNew').onclick=vom;
+
+/* ---------- misc ---------- */
+document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>$(b.dataset.go).scrollIntoView({behavior:'smooth'}));
+$('randomLink').onclick=e=>{
+  e.preventDefault();
+  const b=1+Math.floor(Math.random()*66);
+  openChapter(b,1+Math.floor(Math.random()*BOOKS[b-1][1]));
+};
+
+/* nav contrast over light bands */
+const lightBands=[...document.querySelectorAll('.band.paper,.band.alt')];
+const nav=$('nav');
+addEventListener('scroll',()=>{
+  const y=64;
+  nav.classList.toggle('light',lightBands.some(el=>{const r=el.getBoundingClientRect();return r.top<y&&r.bottom>y}));
+},{passive:true});
+
+/* card spotlight follow */
+document.querySelectorAll('.card').forEach(c=>{
+  c.addEventListener('pointermove',e=>{
+    const r=c.getBoundingClientRect();
+    c.style.setProperty('--mx',(e.clientX-r.left)+'px');
+    c.style.setProperty('--my',(e.clientY-r.top)+'px');
+  });
+});
+
+/* reveal on scroll */
+const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('in')),{threshold:.06});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* Animated counters, driven by elapsed time rather than tick count. The
+   interval version advanced a fixed step per callback, so whenever the
+   WebGL layers saturated the main thread the numbers crawled and settled
+   on the wrong values — the hero read "7 books, 132 chapters". */
+[[$('s1'),66,''],[$('s2'),1189,''],[$('s3'),31,'k']].forEach(([el,n,suf])=>{
+  if(!el)return;
+  const DUR=1100, t0=performance.now();
+  const ease=t=>1-Math.pow(1-t,3);
+  (function tick(now){
+    const t=Math.min((now-t0)/DUR,1);
+    el.textContent=Math.round(n*ease(t))+suf;
+    if(t<1)requestAnimationFrame(tick); else el.textContent=n+suf;
+  })(t0);
+});
+
+/* boot — restore last read position */
+renderBooks();
+const last=(localStorage.getItem('vl_last')||'1:1').split(':').map(Number);
+openChapter(last[0]||1,last[1]||1,false);
+vom();
+
+/* Repaint the open chapter when the translation changes. */
+ESV.onChange(() => { if (typeof cur === 'object') openChapter(cur.b, cur.c, false); });
+
+
+===== FILE: src/devotional.js (4.1 KB) =====
+
+/* Verselight — The Descending Light: 365 daily readings.
+ *
+ * Scripture/reflection/prayer/today, the four-part shape the enduring
+ * devotionals share. The passage is pulled live from the offline book
+ * files rather than duplicated, so the reading always shows the real text
+ * — and upgrades to ESV when a key and a signal are present.
+ */
+
+import { ESV } from './esv.js';
+
+const $ = (id) => document.getElementById(id);
+
+const BOOK_NAMES = [
+  'Genesis','Exodus','Leviticus','Numbers','Deuteronomy','Joshua','Judges','Ruth',
+  '1 Samuel','2 Samuel','1 Kings','2 Kings','1 Chronicles','2 Chronicles','Ezra',
+  'Nehemiah','Esther','Job','Psalms','Proverbs','Ecclesiastes','Song of Solomon',
+  'Isaiah','Jeremiah','Lamentations','Ezekiel','Daniel','Hosea','Joel','Amos',
+  'Obadiah','Jonah','Micah','Nahum','Habakkuk','Zephaniah','Haggai','Zechariah',
+  'Malachi','Matthew','Mark','Luke','John','Acts','Romans','1 Corinthians',
+  '2 Corinthians','Galatians','Ephesians','Philippians','Colossians',
+  '1 Thessalonians','2 Thessalonians','1 Timothy','2 Timothy','Titus','Philemon',
+  'Hebrews','James','1 Peter','2 Peter','1 John','2 John','3 John','Jude','Revelation',
+];
+
+let DEVO = null;
+let offset = 0;
+const bookCache = new Map();
+
+async function book(b) {
+  if (bookCache.has(b)) return bookCache.get(b);
+  try {
+    const r = await fetch('data/books/' + b + '.json');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    bookCache.set(b, d);
+    return d;
+  } catch (_) {
+    return null;
+  }
+}
+
+/* Deterministic from the date, so a group reads the same entry without any
+   server, and it survives reloads with no storage. */
+function todayIndex(off) {
+  const day = Math.floor(Date.now() / 86400000);
+  const n = DEVO.days.length;
+  return (((day + off) % n) + n) % n;
+}
+
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+function paintVerses(rows, label, note) {
+  $('devoVerses').innerHTML =
+    rows.map((r, i) => `<div class="v ${i === 0 ? 'first' : ''}"><b>${r[1]}</b>${esc(r[2])}</div>`).join('') +
+    (note ? `<div class="loading" style="text-align:left;opacity:.45;font-size:11px;margin-top:14px">${esc(note)}</div>` : '');
+  const ref = $('devoRef');
+  if (ref && label) ref.innerHTML = ref.dataset.ref + ' &nbsp;·&nbsp; ' + label;
+}
+
+async function render() {
+  if (!DEVO) return;
+  const i = todayIndex(offset);
+  const e = DEVO.days[i];
+  const arc = (DEVO.arcs || []).find((a) => a.id === e.arc);
+
+  $('devoArc').textContent = `Day ${e.d} of ${DEVO.days.length}` + (arc ? ` · ${arc.title}` : '');
+  $('devoTitle').textContent = e.title;
+  $('devoRef').dataset.ref = e.refLabel;
+  $('devoRef').textContent = e.refLabel;
+  $('devoReflection').textContent = e.reflection;
+  $('devoPrayer').textContent = e.prayer;
+  $('devoAction').textContent = e.today;
+  $('devoVerses').innerHTML = '<div class="loading">Loading…</div>';
+
+  const [b, c, from, to] = e.ref;
+  const data = await book(b);
+  if (i !== todayIndex(offset)) return;                 // user moved on
+
+  const rows = data && data.rows
+    ? data.rows.filter((r) => r[0] === c && r[1] >= from && r[1] <= to)
+    : [];
+  if (rows.length) paintVerses(rows, 'KJV', null);
+  else $('devoVerses').innerHTML = '<div class="loading">Passage unavailable offline</div>';
+
+  // Upgrade in place if an ESV key is present and there is signal.
+  const esvRows = await ESV.rows(e.refLabel, c);
+  if (esvRows && i === todayIndex(offset)) paintVerses(esvRows, 'ESV', ESV.NOTICE);
+}
+
+async function boot() {
+  try {
+    const r = await fetch('data/devotional.json');
+    DEVO = await r.json();
+  } catch (_) {
+    const host = $('devotional');
+    if (host) host.style.display = 'none';             // fail quietly, not loudly
+    return;
+  }
+  $('devoPrev').addEventListener('click', () => { offset--; render(); });
+  $('devoNext').addEventListener('click', () => { offset++; render(); });
+  $('devoToday').addEventListener('click', () => { offset = 0; render(); });
+  ESV.onChange(render);
+  render();
+}
+
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);
+else boot();
+
+export { BOOK_NAMES };
+
+
+===== FILE: src/study.js (27.2 KB) =====
+
+/* Verselight — Study: the learning modules.
+ *
+ * Nine ways into the same text. Three are games built for children, three
+ * drill the disciplines an adult teacher needs, and three are reference: the
+ * whole canon book by book, everything Jesus taught, and the map of where
+ * the commission sends you.
+ *
+ * Each module is a function handed an empty element. Nothing renders until a
+ * card is tapped, and the three reference tables are fetched on first use —
+ * a reader who never opens Study never pays for it.
+ */
+
+import { ESV } from './esv.js';
+
+const $ = (id) => document.getElementById(id);
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+};
+
+const shuffle = (a) => {
+  const r = a.slice();
+  for (let i = r.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [r[i], r[j]] = [r[j], r[i]];
+  }
+  return r;
+};
+
+const esc = (s) => String(s).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- narration ----------
+   The device synthesizer, but with the best installed voice chosen by score
+   rather than whatever the browser defaults to — which is reliably the worst
+   one present. Long passages are split into sentences because Chrome
+   silently truncates an utterance past roughly two hundred characters, which
+   is why naive speechSynthesis calls cut off mid-verse. */
+const Voice = (() => {
+  const PREFERRED = [
+    'Google UK English Male', 'Google UK English Female', 'Google US English',
+    'Microsoft Guy Online', 'Microsoft Aria Online', 'Microsoft Ryan Online',
+    'Daniel', 'Serena', 'Samantha', 'Alex', 'Karen', 'Moira', 'Tessa',
+  ];
+  let voice = null, queue = [], speaking = false;
+  let onState = () => {};
+
+  function pick() {
+    if (!('speechSynthesis' in window)) return null;
+    const all = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang));
+    if (!all.length) return null;
+    const score = (v) => {
+      let s = 0;
+      const i = PREFERRED.indexOf(v.name);
+      if (i >= 0) s += 1000 - i * 10;
+      if (/natural|neural|premium|enhanced/i.test(v.name)) s += 400;
+      if (/compact|espeak|robot/i.test(v.name)) s -= 500;
+      if (v.localService) s += 60;            // still works with the network off
+      if (/en-GB/i.test(v.lang)) s += 25;     // reads Jacobean English well
+      if (v.default) s += 10;
+      return s;
+    };
+    return all.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+
+  if ('speechSynthesis' in window) {
+    voice = pick();
+    speechSynthesis.onvoiceschanged = () => { voice = pick(); };
+  }
+
+  const sentences = (text) => String(text)
+    .replace(/\s+/g, ' ').replace(/[""]/g, '')
+    .match(/[^.!?;:]+[.!?;:]*/g) || [text];
+
+  function next() {
+    if (!queue.length) { speaking = false; onState(false); return; }
+    const u = new SpeechSynthesisUtterance(queue.shift().trim());
+    if (voice) u.voice = voice;
+    u.rate = 0.88;                            // unhurried; this is Scripture
+    u.pitch = 0.98;
+    u.onend = next;
+    u.onerror = next;
+    speechSynthesis.speak(u);
+  }
+
+  return {
+    available: () => 'speechSynthesis' in window,
+    onStateChange(fn) { onState = fn; },
+    speaking: () => speaking,
+    stop() {
+      queue = []; speaking = false;
+      try { speechSynthesis.cancel(); } catch (_) {}
+      onState(false);
+    },
+    speak(text) {
+      this.stop();
+      if (!text || !('speechSynthesis' in window)) return;
+      speaking = true; onState(true);
+      queue = sentences(text);
+      next();
+    },
+    toggle(text) { if (speaking) this.stop(); else this.speak(text); },
+  };
+})();
+
+const say = (t) => Voice.speak(t);
+
+function celebrate(host, msg) {
+  const r = el('div', 'sx-result');
+  r.append(el('div', 'big', '✦'), el('p', null, msg));
+  host.append(r);
+  r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ---------- reference tables, fetched on first use ---------- */
+let CANON = null, OVERVIEW = null, TEACH = null;
+async function tables() {
+  if (CANON && OVERVIEW && TEACH) return true;
+  try {
+    const [c, o, t] = await Promise.all([
+      fetch('data/canon.json').then((r) => r.json()),
+      fetch('data/bible-overview.json').then((r) => r.json()),
+      fetch('data/jesus-teachings.json').then((r) => r.json()),
+    ]);
+    CANON = c; OVERVIEW = o; TEACH = t;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/* ======================= games ======================= */
+
+const CREATION_DAYS = [
+  { n: 1, label: 'Light and Darkness', ref: 'Genesis 1:3-5' },
+  { n: 2, label: 'Sky and Waters', ref: 'Genesis 1:6-8' },
+  { n: 3, label: 'Land and Plants', ref: 'Genesis 1:9-13' },
+  { n: 4, label: 'Sun, Moon, Stars', ref: 'Genesis 1:14-19' },
+  { n: 5, label: 'Fish and Birds', ref: 'Genesis 1:20-23' },
+  { n: 6, label: 'Animals and People', ref: 'Genesis 1:24-31' },
+  { n: 7, label: 'God Rested', ref: 'Genesis 2:1-3' },
+];
+
+/* Sequence the seven days. A wrong tap never punishes — it nudges the card
+   and re-reads the question. */
+function gameCreation(host) {
+  let next = 0;
+  const rail = el('div', 'sx-rail');
+  CREATION_DAYS.forEach(() => rail.append(document.createElement('i')));
+  const slots = el('div', 'sx-slots'), pool = el('div', 'sx-slots');
+  host.append(rail, slots, pool);
+
+  shuffle(CREATION_DAYS).forEach((day) => {
+    const card = el('button', 'sx-card');
+    card.append(el('strong', null, day.label), el('small', null, day.ref));
+    card.onclick = () => {
+      if (day.n === CREATION_DAYS[next].n) {
+        card.disabled = true;
+        card.classList.add('placed');
+        card.querySelector('strong').textContent = `Day ${day.n} · ${day.label}`;
+        slots.append(card);
+        rail.children[next].classList.add('lit');
+        next++;
+        if (next === CREATION_DAYS.length) {
+          celebrate(host, 'You built the whole first week. God spoke, and it was so — and everything He made was very good.');
+        }
+      } else {
+        card.classList.remove('wrong'); void card.offsetWidth; card.classList.add('wrong');
+        say(`Not yet. What came on day ${next + 1}?`);
+      }
+    };
+    pool.append(card);
+  });
+}
+
+const HEROES = [
+  { hero: 'Noah', deed: 'Built the ark when no rain had ever fallen', ref: 'Genesis 6' },
+  { hero: 'David', deed: 'Faced the giant with a sling and God’s name', ref: '1 Samuel 17' },
+  { hero: 'Daniel', deed: 'Kept praying, even facing the lions’ den', ref: 'Daniel 6' },
+  { hero: 'Esther', deed: 'Went to the king to save her people', ref: 'Esther 4' },
+  { hero: 'Ruth', deed: 'Stayed loyal and followed the true God', ref: 'Ruth 1' },
+  { hero: 'Mary', deed: 'Said yes to God and became Jesus’ mother', ref: 'Luke 1' },
+];
+
+function gameHeroes(host) {
+  let picked = null, done = 0;
+  host.append(el('p', 'sx-lead', 'Tap a name, then tap the brave thing God helped them do.'));
+  const wrap = el('div', 'sx-two');
+  const heroCol = el('div', 'sx-col'), deedCol = el('div', 'sx-col');
+  wrap.append(heroCol, deedCol);
+  host.append(wrap);
+
+  HEROES.forEach((h) => {
+    const b = el('button', 'sx-card');
+    b.append(el('strong', null, h.hero));
+    b.dataset.hero = h.hero;
+    b.onclick = () => {
+      if (b.disabled) return;
+      heroCol.querySelectorAll('.sx-card').forEach((x) => x.classList.remove('picked'));
+      b.classList.add('picked');
+      picked = h;
+    };
+    heroCol.append(b);
+  });
+
+  shuffle(HEROES).forEach((h) => {
+    const b = el('button', 'sx-card');
+    b.append(el('strong', null, h.deed), el('small', null, h.ref));
+    b.onclick = () => {
+      if (b.disabled) return;
+      if (!picked) { say('Pick a name first.'); return; }
+      if (picked.hero === h.hero) {
+        b.disabled = true; b.classList.add('placed');
+        const hb = heroCol.querySelector(`[data-hero="${h.hero}"]`);
+        hb.disabled = true; hb.classList.remove('picked'); hb.classList.add('placed');
+        picked = null; done++;
+        if (done === HEROES.length) {
+          celebrate(host, 'Every one of them was an ordinary person with an extraordinary God. He is the same God today — and He knows your name.');
+        }
+      } else {
+        b.classList.remove('wrong'); void b.offsetWidth; b.classList.add('wrong');
+      }
+    };
+    deedCol.append(b);
+  });
+}
+
+const MEMORY_VERSES = [
+  { ref: 'John 3:16', text: 'For God so loved the world, that he gave his only begotten Son.' },
+  { ref: 'Psalm 119:105', text: 'Thy word is a lamp unto my feet, and a light unto my path.' },
+  { ref: 'Genesis 1:1', text: 'In the beginning God created the heaven and the earth.' },
+];
+
+function gameVerse(host) {
+  const verse = MEMORY_VERSES[Math.floor(Math.random() * MEMORY_VERSES.length)];
+  const words = verse.text.split(/\s+/);
+  let next = 0;
+  host.append(el('p', 'sx-lead', `Tap the words in order — ${verse.ref}`));
+  const line = el('div', 'sx-line'), pool = el('div', 'sx-tiles');
+  host.append(line, pool);
+
+  shuffle(words.map((w, i) => ({ w, i }))).forEach(({ w, i }) => {
+    const tile = el('button', 'sx-tile', w);
+    tile.onclick = () => {
+      /* The exact position counts, and so does an identical repeated word —
+         otherwise "God" in the wrong slot reads as a mistake it isn't. */
+      if (i === next || w === words[next]) {
+        tile.classList.add('used');
+        tile.disabled = true;
+        const span = el('span', null, (next ? ' ' : '') + w);
+        line.append(span);
+        requestAnimationFrame(() => span.classList.add('lit'));
+        next++;
+        if (next === words.length) {
+          line.classList.add('done');
+          say(verse.text);
+          celebrate(host, `You built ${verse.ref}. Say it out loud three times — the Word hidden in your heart goes with you everywhere.`);
+        }
+      } else {
+        tile.classList.remove('wrong'); void tile.offsetWidth; tile.classList.add('wrong');
+        say(words.slice(0, next).join(' '));
+      }
+    };
+    pool.append(tile);
+  });
+}
+
+/* ======================= study ======================= */
+
+const EPOCHS = [
+  { n: 1, label: 'Creation', ref: 'Genesis 1–2' },
+  { n: 2, label: 'The Fall', ref: 'Genesis 3' },
+  { n: 3, label: 'Covenant with Abraham', ref: 'Genesis 12' },
+  { n: 4, label: 'The Exodus', ref: 'Exodus 12–14' },
+  { n: 5, label: 'Law at Sinai', ref: 'Exodus 20' },
+  { n: 6, label: 'Davidic Kingdom', ref: '2 Samuel 7' },
+  { n: 7, label: 'Exile & Prophets', ref: 'Isaiah 53' },
+  { n: 8, label: 'The Incarnation', ref: 'Luke 2' },
+  { n: 9, label: 'Cross & Resurrection', ref: 'Luke 23–24' },
+  { n: 10, label: 'Pentecost & the Church', ref: 'Acts 2' },
+  { n: 11, label: 'New Creation', ref: 'Revelation 21' },
+];
+
+function moduleChronology(host) {
+  let next = 0;
+  host.append(el('p', 'sx-lead', 'Place the eleven epochs of redemptive history in order.'));
+  const rail = el('div', 'sx-rail');
+  EPOCHS.forEach(() => rail.append(document.createElement('i')));
+  const slots = el('div', 'sx-slots'), pool = el('div', 'sx-slots');
+  host.append(rail, slots, pool);
+
+  shuffle(EPOCHS).forEach((e) => {
+    const c = el('button', 'sx-card');
+    c.append(el('strong', null, e.label), el('small', null, e.ref));
+    c.onclick = () => {
+      if (e.n === EPOCHS[next].n) {
+        c.disabled = true; c.classList.add('placed');
+        slots.append(c); rail.children[next].classList.add('lit'); next++;
+        if (next === EPOCHS.length) {
+          celebrate(host, 'One story, one Author, one Redeemer. From the garden to the city every epoch bends toward Christ — "beginning at Moses and all the prophets, he expounded unto them in all the scriptures the things concerning himself." (Luke 24:27)');
+        }
+      } else {
+        c.classList.remove('wrong'); void c.offsetWidth; c.classList.add('wrong');
+      }
+    };
+    pool.append(c);
+  });
+}
+
+const EXEGESIS = [
+  {
+    passage: 'Philippians 2:5-8',
+    text: 'Let this mind be in you, which was also in Christ Jesus: who, being in the form of God, thought it not robbery to be equal with God: but made himself of no reputation, and took upon him the form of a servant…',
+    steps: [
+      { stage: 'OBSERVATION', q: 'What does the text actually SAY about Christ’s status before the incarnation?',
+        opts: ['He was created first among all beings',
+               'He was in the form of God and equal with God',
+               'He became divine after His resurrection'],
+        a: 1, why: 'The text states He "was in the form of God" and held equality with God prior to emptying Himself. Observation asks what is on the page — not yet what it means.' },
+      { stage: 'INTERPRETATION', q: 'What does "made himself of no reputation" mean in context?',
+        opts: ['He ceased to be God',
+               'He gave up His divine attributes permanently',
+               'He did not cling to His privileges but took the form of a servant'],
+        a: 2, why: 'The grammar defines the emptying by the participle that follows: "and took upon him the form of a servant." He added humanity and veiled glory; He did not subtract deity. Context, not English connotation, governs meaning.' },
+      { stage: 'APPLICATION', q: 'What does Paul command the church to DO with this?',
+        opts: ['Adopt Christ’s self-lowering mindset toward one another',
+               'Debate the two natures of Christ precisely',
+               'Wait passively for exaltation'],
+        a: 0, why: 'The hymn is framed by an imperative: "Let this mind be in you." The deepest Christology in Scripture is deployed to settle a church squabble. Doctrine always lands in obedience.' },
+    ],
+  },
+  {
+    passage: 'Romans 3:23-24',
+    text: 'For all have sinned, and come short of the glory of God; being justified freely by his grace through the redemption that is in Christ Jesus.',
+    steps: [
+      { stage: 'OBSERVATION', q: 'What is the scope of the word "all"?',
+        opts: ['Only the notably wicked', 'Every human being without exception', 'Only those outside the covenant'],
+        a: 1, why: 'Paul has spent chapters 1–3 closing every escape route — moralist, pagan and religious alike. "All" is universal, which is why the remedy must be universal too.' },
+      { stage: 'INTERPRETATION', q: 'What does "justified" mean here?',
+        opts: ['Made gradually more moral over time',
+               'Declared righteous in God’s courtroom',
+               'Forgiven but still legally guilty'],
+        a: 1, why: 'Justification is forensic — a legal declaration, not an infusion of improvement. God pronounces the ungodly righteous on the basis of Christ’s redemption, not their progress.' },
+      { stage: 'APPLICATION', q: 'What follows for someone still trying to earn God’s favour?',
+        opts: ['Try harder with better methods',
+               'Receive as a gift what can never be earned',
+               'Balance grace with sufficient merit'],
+        a: 1, why: '"Freely by his grace" forecloses the transaction. Adding merit to grace does not improve the gospel — it abolishes it (Galatians 2:21).' },
+    ],
+  },
+];
+
+function moduleExegesis(host) {
+  const study = EXEGESIS[Math.floor(Math.random() * EXEGESIS.length)];
+  let idx = 0, score = 0;
+  const passage = el('div', 'sx-block');
+  passage.innerHTML = `<span class="kind">${esc(study.passage)}</span><p class="quote">${esc(study.text)}</p>`;
+  const rail = el('div', 'sx-rail');
+  study.steps.forEach(() => rail.append(document.createElement('i')));
+  const stage = el('div');
+  host.append(passage, rail, stage);
+
+  function render() {
+    const s = study.steps[idx];
+    stage.innerHTML = '';
+    stage.append(el('span', 'sx-eyebrow', `Step ${idx + 1} of ${study.steps.length} · ${s.stage}`));
+    stage.append(el('p', 'sx-q', s.q));
+    let answered = false;
+    s.opts.forEach((opt, i) => {
+      const b = el('button', 'sx-opt', opt);
+      b.onclick = () => {
+        if (answered) return;
+        answered = true;
+        const right = i === s.a;
+        if (right) score++;
+        b.classList.add(right ? 'correct' : 'miss');
+        if (!right) stage.querySelectorAll('.sx-opt')[s.a].classList.add('correct');
+        const ex = el('div', 'sx-explain');
+        ex.innerHTML = `<b>${right ? 'Correct.' : 'Not quite.'}</b> ${esc(s.why)}`;
+        stage.append(ex);
+        rail.children[idx].classList.add('lit');
+        const nextBtn = el('button', 'sx-go',
+          idx < study.steps.length - 1 ? 'Next step ›' : 'Finish the drill');
+        nextBtn.onclick = () => {
+          idx++;
+          if (idx < study.steps.length) render();
+          else {
+            stage.innerHTML = '';
+            celebrate(stage, `${score} of ${study.steps.length} on ${study.passage}. Observation before interpretation, interpretation before application — the discipline that keeps a teacher from preaching their own imagination.`);
+          }
+        };
+        stage.append(nextBtn);
+      };
+      stage.append(b);
+    });
+  }
+  render();
+}
+
+const THREADS = [
+  { theme: 'The Lamb', chain: [
+    { ref: 'Genesis 22:8', note: '"God will provide himself a lamb" — Abraham on the mountain.' },
+    { ref: 'Exodus 12:13', note: 'The Passover blood on the doorposts: judgment passes over.' },
+    { ref: 'Isaiah 53:7', note: '"As a lamb to the slaughter" — the silent Servant.' },
+    { ref: 'John 1:29', note: '"Behold the Lamb of God, which taketh away the sin of the world."' },
+    { ref: 'Revelation 5:6', note: 'The Lamb standing, as though slain — worthy to open the scroll.' },
+  ] },
+  { theme: 'The Temple', chain: [
+    { ref: 'Exodus 40:34', note: 'The glory fills the tabernacle — God dwells among His people.' },
+    { ref: '1 Kings 8:11', note: 'The cloud fills Solomon’s temple at its dedication.' },
+    { ref: 'Ezekiel 10:18', note: 'The glory departs; sin drives out the presence.' },
+    { ref: 'John 2:19-21', note: '"Destroy this temple" — He spake of the temple of his body.' },
+    { ref: '1 Corinthians 3:16', note: 'You yourselves are God’s temple, indwelt by His Spirit.' },
+  ] },
+  { theme: 'The Kingdom', chain: [
+    { ref: 'Genesis 1:28', note: 'Humanity commissioned to rule creation under God.' },
+    { ref: '2 Samuel 7:16', note: 'David’s throne established for ever.' },
+    { ref: 'Daniel 7:14', note: 'One like a son of man receives everlasting dominion.' },
+    { ref: 'Mark 1:15', note: '"The kingdom of God is at hand: repent ye, and believe."' },
+    { ref: 'Revelation 11:15', note: 'The kingdoms of this world become the kingdoms of our Lord.' },
+  ] },
+];
+
+function moduleConcordance(host) {
+  const thread = THREADS[Math.floor(Math.random() * THREADS.length)];
+  let next = 0;
+  host.append(el('p', 'sx-lead',
+    `Thread: ${thread.theme}. Tap the references in canonical order to trace how the promise unfolds.`));
+  const rail = el('div', 'sx-rail');
+  thread.chain.forEach(() => rail.append(document.createElement('i')));
+  const trace = el('div'), pool = el('div', 'sx-slots');
+  host.append(rail, trace, pool);
+
+  shuffle(thread.chain).forEach((link) => {
+    const b = el('button', 'sx-card');
+    b.append(el('strong', null, link.ref));
+    b.onclick = () => {
+      if (link.ref === thread.chain[next].ref) {
+        b.disabled = true; b.style.display = 'none';
+        const step = el('div', 'sx-block');
+        step.innerHTML = `<span class="kind">${next + 1} · ${esc(link.ref)}</span><p>${esc(link.note)}</p>`;
+        trace.append(step);
+        rail.children[next].classList.add('lit');
+        next++;
+        if (next === thread.chain.length) {
+          celebrate(host, `The thread of ${thread.theme} runs unbroken from Genesis to Revelation. Sixty-six books, forty authors, sixteen centuries — one Mind behind it, and one Christ at its centre.`);
+        }
+      } else {
+        b.classList.remove('wrong'); void b.offsetWidth; b.classList.add('wrong');
+      }
+    };
+    pool.append(b);
+  });
+}
+
+/* ======================= reference ======================= */
+
+async function moduleBooks(host) {
+  if (!await tables()) { host.append(el('p', 'sx-lead', 'Reference tables unavailable.')); return; }
+  const grid = el('div', 'sx-books'), detail = el('div');
+  host.append(grid, detail);
+  OVERVIEW.books.forEach((ov) => {
+    const meta = CANON[ov.b] || {};
+    const c = el('button', 'sx-mini' + (meta.testament === 'OT' ? ' ot' : ''));
+    c.innerHTML = `<b>${esc(meta.name || 'Book ' + ov.b)}</b><span>${meta.testament === 'OT' ? 'Old' : 'New'}</span>`;
+    c.onclick = () => {
+      grid.querySelectorAll('.sx-mini').forEach((x) => x.classList.remove('on'));
+      c.classList.add('on');
+      detail.innerHTML =
+        `<div class="sx-block lead"><span class="kind">${esc(meta.name)} — ${esc(ov.t)}</span>
+           <p class="quote">Key verse: ${esc(ov.kv)}</p></div>` +
+        ov.ls.map((l, i) => `<div class="sx-block"><span class="kind">Lesson ${i + 1}</span><p>${esc(l)}</p></div>`).join('') +
+        `<div class="sx-block christ"><span class="kind">Where is Jesus here?</span><p>${esc(ov.c)}</p></div>`;
+      detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    grid.append(c);
+  });
+}
+
+async function moduleTeachings(host) {
+  if (!await tables()) { host.append(el('p', 'sx-lead', 'Reference tables unavailable.')); return; }
+  TEACH.categories.forEach((cat) => {
+    const head = el('div', 'sx-block lead');
+    head.innerHTML = `<span class="kind">${esc(cat.title)} · ${esc(cat.ref)}</span><p>${esc(cat.intro)}</p>`;
+    host.append(head);
+    cat.items.forEach((it) => {
+      const acc = el('div', 'sx-acc');
+      const btn = el('button');
+      btn.innerHTML = `<b>${esc(it.title)}</b><small>${esc(it.ref)}</small>`;
+      const inner = el('div', 'inner');
+      inner.hidden = true;
+      inner.innerHTML =
+        `<div class="sx-block"><span class="kind">What Jesus taught</span><p>${esc(it.teaching)}</p></div>
+         <div class="sx-block christ"><span class="kind">Live it</span><p>${esc(it.live)}</p></div>`;
+      btn.onclick = () => { inner.hidden = !inner.hidden; acc.classList.toggle('open', !inner.hidden); };
+      acc.append(btn, inner);
+      host.append(acc);
+    });
+  });
+}
+
+const MISSION_RINGS = [
+  { r: 0.13, label: 'JERUSALEM', note: 'Where you already are' },
+  { r: 0.30, label: 'JUDEA', note: 'Your own people and region' },
+  { r: 0.48, label: 'SAMARIA', note: 'The neighbours you would rather avoid' },
+  { r: 0.72, label: 'ENDS OF THE EARTH', note: 'Every nation, tribe and tongue' },
+];
+
+function moduleMaps(host) {
+  host.append(el('p', 'sx-lead',
+    '"But ye shall receive power, after that the Holy Ghost is come upon you: and ye shall be witnesses unto me both in Jerusalem, and in all Judaea, and in Samaria, and unto the uttermost part of the earth." — Acts 1:8'));
+  const cv = el('canvas', 'sx-map');
+  const legend = el('div');
+  host.append(cv, legend);
+  legend.innerHTML = MISSION_RINGS.map((r, i) =>
+    `<div class="sx-block"><span class="kind">${i + 1} · ${r.label}</span><p>${r.note}</p></div>`).join('');
+
+  requestAnimationFrame(() => {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#07080b'); g.addColorStop(1, '#141824');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const cx = W / 2, cy = H / 2, base = Math.min(W, H) * 0.62;
+    const gold = '#d9a441';
+    MISSION_RINGS.slice().reverse().forEach((ring) => {
+      const rr = base * ring.r;
+      const grd = ctx.createRadialGradient(cx, cy, rr * 0.55, cx, cy, rr);
+      grd.addColorStop(0, 'rgba(217,164,65,0)');
+      grd.addColorStop(1, 'rgba(217,164,65,.10)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = gold + '66';
+      ctx.setLineDash([4, 8]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(244,241,234,.72)';
+      ctx.font = '600 9.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ring.label, cx, cy - rr + 14);
+    });
+    for (let i = 0; i < 12; i++) {                 // the dispatch, radiating out
+      const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + Math.cos(a) * base * 0.72, y = cy + Math.sin(a) * base * 0.72;
+      const grad = ctx.createLinearGradient(cx, cy, x, y);
+      grad.addColorStop(0, gold + 'cc');
+      grad.addColorStop(1, gold + '00');
+      ctx.strokeStyle = grad; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+    }
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 22);
+    core.addColorStop(0, '#fff8e1'); core.addColorStop(1, gold + '00');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.fill();
+  });
+}
+
+/* ======================= router ======================= */
+
+const MODULES = {
+  books: ['The Sixty-Six', 'Every book of the canon: its theme, key verse, main lessons, and where it points to Christ.', moduleBooks],
+  teachings: ['The Teachings of Jesus', 'The Sermon, the parables, the seven I AMs, the miracles, and His final words.', moduleTeachings],
+  chronology: ['Testament Illuminations', 'Eleven epochs of redemptive history. Place them along the river of light.', moduleChronology],
+  exegesis: ['Exegesis Training', 'The inductive method drilled: observation, then interpretation, then application.', moduleExegesis],
+  concordance: ['Redemptive Threads', 'Trace one theme across both testaments in canonical order.', moduleConcordance],
+  maps: ['The Acts 1:8 Dispatch', 'Concentric commission: the gospel moves outward from wherever you stand.', moduleMaps],
+  creation: ['The Creation Adventure', 'Seven days, in the order God spoke them. Tap each day as it comes.', gameCreation],
+  heroes: ['Heroes of Faith', 'Ordinary people, extraordinary God. Match each name to their brave act.', gameHeroes],
+  verse: ['Build the Verse', 'Every word in its place — then watch the whole verse light up.', gameVerse],
+};
+
+function openModule(id) {
+  const m = MODULES[id];
+  if (!m) return;
+  const sheet = $('studySheet');
+  $('studyTitle').textContent = m[0];
+  $('studySub').textContent = m[1];
+  const body = $('studyBody');
+  body.innerHTML = '';
+  sheet.classList.add('on');
+  sheet.querySelector('.box').scrollTop = 0;
+  m[2](body);
+}
+
+function closeStudy() {
+  Voice.stop();
+  $('studySheet').classList.remove('on');
+}
+
+function boot() {
+  const sheet = $('studySheet');
+  if (!sheet) return;
+
+  document.querySelectorAll('[data-module]').forEach((b) => {
+    b.addEventListener('click', () => openModule(b.dataset.module));
+  });
+  $('studyClose').addEventListener('click', closeStudy);
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) closeStudy(); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheet.classList.contains('on')) closeStudy(); });
+
+  /* Read the open passage aloud. Hidden outright when the device has no
+     synthesizer, rather than offering a button that does nothing. */
+  const listen = $('listenBtn');
+  if (listen) {
+    if (!Voice.available()) listen.style.display = 'none';
+    else {
+      listen.addEventListener('click', () => {
+        const t = $('devoTitle')?.textContent || '';
+        const v = [...document.querySelectorAll('#devoVerses .v')]
+          .map((n) => n.textContent.replace(/^\d+/, '')).join(' ');
+        Voice.toggle(t + '. ' + v);
+      });
+      Voice.onStateChange((on) => { listen.textContent = on ? 'Stop' : 'Listen'; });
+    }
+  }
+}
+
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', boot);
+else boot();
+
+export { Voice, ESV };
+
+
+===== FILE: src/esv.js (9.1 KB) =====
+
+/* Verselight — ESV over an offline KJV floor.
+ *
+ * Crossway's ESV API is free for non-commercial use (api.esv.org) and ships
+ * enabled here, so the reader opens in the ESV with nothing to configure.
+ *
+ * What the ESV cannot be is wholly offline. Crossway's terms cap local
+ * storage at 500 verses — a licensing boundary, not a technical one, and the
+ * reason the complete ESV cannot be bundled the way the KJV is. Verselight
+ * uses the whole allowance and stops there: passages you actually read are
+ * saved and stay readable with no signal, evicted least-recently-used at the
+ * cap. Past that the KJV takes over, which is public domain and already on
+ * the device in full — so there is always a text, whatever the connection.
+ */
+
+const KEY = 'vl_esv_key';
+const mem = new Map();          // session only, deliberately not persisted
+const listeners = [];
+
+/* The app's own Crossway key, so ESV is on out of the box rather than
+   waiting for every reader to register for one. A key shipped in a page is
+   readable by anyone who views source — that is unavoidable for a static app
+   with no server, and it is why this one is registered for non-commercial
+   use and why fetched verses are never written to storage. Replacing it in
+   the Translation dialog overrides it on that device. */
+const DEFAULT_KEY = '3fb0e2193893d14d7cc52f84e9f34a1e4148aca6';
+
+let key = DEFAULT_KEY;
+try {
+  const saved = localStorage.getItem(KEY);
+  if (saved) key = saved;
+} catch (_) {}
+
+/* What the reader is actually looking at, which is not the same as whether
+   there is a signal: a vaulted chapter reads ESV with the network off. The
+   chip is painted from this rather than from connectivity, so it never
+   claims a translation that is not on screen. */
+let servedESV = null;
+const chipWatchers = [];
+function serve(isESV) {
+  if (servedESV === isESV) return;
+  servedESV = isESV;
+  chipWatchers.forEach((fn) => { try { fn(); } catch (_) {} });
+}
+
+/* ---------- the vault: ESV that survives losing signal ----------
+ *
+ * Crossway's API terms permit storing up to 500 verses locally. That is the
+ * whole allowance, and it is the reason the complete ESV cannot be shipped
+ * the way the KJV is — not a technical limit, a licensed one.
+ *
+ * So the vault keeps exactly that much and no more: the passages actually
+ * read, persisted, evicted least-recently-used once the cap is reached. Read
+ * a chapter once with a signal and it stays readable without one. Everything
+ * past 500 verses falls to the KJV, which is already on the device in full.
+ *
+ * The cap is enforced on write rather than trusted, because a cache that
+ * quietly grows past its licence is the same as having no licence.
+ */
+const CAP = 500;
+const VAULT = 'vl_esv_vault';
+let vault = null;
+
+function vaultLoad() {
+  if (vault) return vault;
+  try {
+    vault = JSON.parse(localStorage.getItem(VAULT) || '{}');
+    if (!vault || typeof vault !== 'object') vault = {};
+  } catch (_) { vault = {}; }
+  return vault;
+}
+
+const vaultCount = () =>
+  Object.values(vaultLoad()).reduce((n, e) => n + (e.r ? e.r.length : 0), 0);
+
+function vaultGet(ref) {
+  const e = vaultLoad()[ref];
+  if (!e) return null;
+  e.t = Date.now();                       // touch, so reading keeps it alive
+  vaultSave();
+  return e.r;
+}
+
+function vaultSave() {
+  try { localStorage.setItem(VAULT, JSON.stringify(vault)); }
+  catch (_) { /* quota or private mode — the KJV still covers everything */ }
+}
+
+function vaultPut(ref, rows) {
+  const v = vaultLoad();
+  /* A single passage longer than the whole allowance is never stored: it
+     cannot be held without exceeding the terms, and half a passage would be
+     worse than none. */
+  if (rows.length > CAP) return;
+  v[ref] = { r: rows, t: Date.now() };
+
+  /* Evict oldest-read first until the total is inside the cap. */
+  let total = vaultCount();
+  if (total > CAP) {
+    const byAge = Object.keys(v).sort((a, b) => (v[a].t || 0) - (v[b].t || 0));
+    for (const k of byAge) {
+      if (total <= CAP) break;
+      if (k === ref) continue;            // never evict what was just read
+      total -= v[k].r.length;
+      delete v[k];
+    }
+  }
+  vaultSave();
+}
+
+export const ESV = {
+  hasKey: () => !!key,
+  usingDefault: () => key === DEFAULT_KEY,
+  enabled: () => !!key && navigator.onLine,
+
+  setKey(k) {
+    const v = (k || '').trim();
+    key = v || DEFAULT_KEY;                 // clearing returns to the app's key
+    try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch (_) {}
+    mem.clear();
+    listeners.forEach(fn => { try { fn(); } catch (_) {} });
+  },
+
+  onChange(fn) { listeners.push(fn); },
+
+  vault: () => ({ verses: vaultCount(), cap: CAP }),
+  serving: () => servedESV,
+  onServed(fn) { chipWatchers.push(fn); },
+
+  /* Returns [[chapter, verse, text], ...] — the same row shape the offline
+     book files use — or null to fall back to the KJV. */
+  async rows(refLabel, chapterNo) {
+    const cached = mem.get(refLabel) || vaultGet(refLabel);
+    if (cached) { serve(true); return cached; }   // works with no signal at all
+    if (!this.enabled()) { serve(false); return null; }
+    try {
+      const url = 'https://api.esv.org/v3/passage/text/?q=' + encodeURIComponent(refLabel) +
+        '&include-headings=false&include-footnotes=false&include-verse-numbers=true' +
+        '&include-short-copyright=false&include-passage-references=false';
+      const res = await fetch(url, { headers: { Authorization: 'Token ' + key } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const raw = (data.passages || []).join(' ').replace(/\s+/g, ' ').trim();
+      if (!raw) return null;
+      const out = [];
+      const re = /\[(\d+)\]\s*([^[]*)/g;
+      let m;
+      while ((m = re.exec(raw))) out.push([chapterNo || 0, +m[1], m[2].trim()]);
+      if (!out.length) { serve(false); return null; }
+      mem.set(refLabel, out);
+      vaultPut(refLabel, out);
+      serve(true);
+      return out;
+    } catch (_) {
+      serve(false);
+      return null;                 // offline, refused, or rate-limited → KJV
+    }
+  },
+
+  NOTICE: 'Scripture quotations marked ESV are from the ESV® Bible (The Holy ' +
+    'Bible, English Standard Version®), copyright © 2001 by Crossway, a ' +
+    'publishing ministry of Good News Publishers. Used by permission. All rights reserved.',
+};
+
+/* ---------- the chip + key dialog ---------- */
+const $ = (id) => document.getElementById(id);
+
+function paintChip() {
+  const chip = $('verChip');
+  if (!chip) return;
+  /* Before anything has rendered there is nothing served yet, so fall back to
+     what the next render will produce. */
+  const on = servedESV === null ? ESV.enabled() : servedESV;
+  chip.textContent = on ? 'ESV' : 'KJV';
+  chip.classList.toggle('esv', on);
+}
+
+function bind() {
+  const chip = $('verChip'), sheet = $('keySheet');
+  if (!chip || !sheet) return;
+
+  /* Three states, and the copy has to tell them apart: reading ESV on the
+     app's key, reading ESV on a key this device supplied, or offline and
+     reading the KJV. */
+  function status() {
+    const v = ESV.vault();
+    const held = v.verses
+      ? ` ${v.verses} of ${v.cap} licensed verses are saved for offline reading.`
+      : ` Passages you read are saved offline, up to the ${v.cap} verses the licence allows.`;
+    if (!navigator.onLine) {
+      return 'No signal.' + (v.verses
+        ? ` Saved ESV passages still read; everything else falls back to the KJV.${held}`
+        : ' Reading the offline KJV — ESV returns when you reconnect.');
+    }
+    if (ESV.usingDefault()) return 'Reading the ESV. No key needed — Verselight supplies one.' + held;
+    return 'Reading the ESV on your own key.' + held;
+  }
+
+  const open = (e) => {
+    if (e) e.preventDefault();
+    $('keyInput').value = ESV.usingDefault() ? '' : '•••••••• saved';
+    $('keyStatus').textContent = status();
+    sheet.classList.add('on');
+  };
+
+  chip.addEventListener('click', open);
+  /* The footer's Translation entry opens the same sheet — a link that goes
+     nowhere is worse than no link at all. */
+  const verLink = $('verLink');
+  if (verLink) verLink.addEventListener('click', open);
+
+  $('keyClose').addEventListener('click', () => sheet.classList.remove('on'));
+  sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.classList.remove('on'); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') sheet.classList.remove('on'); });
+
+  $('keySave').addEventListener('click', () => {
+    const v = $('keyInput').value;
+    if (v.indexOf('•') === -1) ESV.setKey(v);
+    $('keyStatus').textContent = status();
+    paintChip();
+  });
+
+  ESV.onChange(paintChip);
+  ESV.onServed(paintChip);
+  paintChip();
+
+  /* Losing signal silently swaps the text back to the KJV; the chip has to
+     say so, or it claims to be showing a translation it isn't. Both events
+     also re-render, so the open chapter follows the label. */
+  const changed = () => {
+    paintChip();
+    if (sheet.classList.contains('on')) $('keyStatus').textContent = status();
+    listeners.forEach((fn) => { try { fn(); } catch (_) {} });
+  };
+  addEventListener('online', changed);
+  addEventListener('offline', changed);
+}
+
+if (document.readyState === 'loading') addEventListener('DOMContentLoaded', bind);
+else bind();
+
+export { paintChip };
+
+
+===== FILE: src/gate.js (1.4 KB) =====
+
+/* ── Shared render gate ────────────────────────────────────────────
+   Five canvases animate on this page, three of them raymarched. Running
+   them all continuously measured 1 FPS on a phone. This gate does two
+   things: it stops any canvas that is not on screen (usually only one
+   section is visible at a time), and it lowers the resolution scale on
+   touch devices, where raymarching is fill-rate bound.               */
+export const TOUCH = matchMedia('(hover: none), (pointer: coarse)').matches;
+export const SCALE = TOUCH ? 0.6 : 1;
+
+export function visible(el) {
+  const state = { on: true };
+  if (!el || !window.IntersectionObserver) return state;
+  new IntersectionObserver(
+    (entries) => { state.on = entries[0].isIntersecting; },
+    { rootMargin: '120px' }
+  ).observe(el);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) state.on = false;
+  });
+  return state;
+}
+
+/* A frame limiter for touch devices. Raymarching costs the same whether it
+   runs at 60 or 24 fps, but at 24 it leaves two thirds of the GPU budget
+   for scrolling and text. Slow, floating artwork does not read as choppy
+   at 24; a janky scroll always does. */
+export function limiter(fps) {
+  if (!TOUCH) return () => true;
+  const gap = 1000 / fps;
+  let last = 0;
+  return () => {
+    const now = performance.now();
+    if (now - last < gap) return false;
+    last = now;
+    return true;
+  };
+}
+
+
+===== FILE: src/bg.js (6.8 KB) =====
+
+import { SCALE, limiter } from './gate.js';
+/* Verselight — WebGL atmosphere: volumetric god-rays, drifting dust motes, ink diffusion */
+
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { antialias:false, alpha:true, premultipliedAlpha:false });
+
+const VERT = `
+attribute vec2 p;
+void main(){ gl_Position = vec4(p,0.,1.); }
+`;
+
+const FRAG = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform float uScroll;    // 0..1 page progress
+uniform vec2  uMouse;     // 0..1
+uniform float uPulse;     // 0..1 decaying burst
+
+// --- hash / noise ---
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+}
+float fbm(vec2 p){
+  float v=0., a=.5;
+  mat2 m=mat2(1.6,1.2,-1.2,1.6);
+  for(int i=0;i<6;i++){ v+=a*noise(p); p=m*p; a*=.5; }
+  return v;
+}
+
+// radial god-ray shafts emanating from a source point
+float shafts(vec2 uv, vec2 src, float t){
+  vec2 d = uv - src;
+  float ang = atan(d.y, d.x);
+  float dist = length(d);
+  float rays = 0.;
+  rays += .55 * noise(vec2(ang*7.0, t*0.10));
+  rays += .30 * noise(vec2(ang*15.0, t*0.16 + 4.0));
+  rays += .18 * noise(vec2(ang*31.0, t*0.22 + 9.0));
+  rays = pow(max(rays,0.), 2.2);
+  float fall = exp(-dist*1.55);
+  return rays * fall;
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 asp = vec2(uRes.x/uRes.y, 1.0);
+  vec2 p = uv * asp;
+
+  float t = uTime;
+
+  // light source drifts slowly, nudged by cursor
+  vec2 src = vec2(0.30, 0.86) * asp;
+  src += vec2(sin(t*0.07)*0.05, cos(t*0.05)*0.03);
+  src += (uMouse - 0.5) * vec2(0.16, 0.10) * asp;
+  src.y -= uScroll * 0.55;
+
+  // --- deep field ---
+  vec3 col = vec3(0.027, 0.031, 0.043);
+
+  // slow nebular ink diffusion
+  vec2 q = p*1.6;
+  q += vec2(fbm(q + t*0.028), fbm(q + vec2(5.2,1.3) - t*0.021)) * 0.65;
+  float ink = fbm(q*1.25 + t*0.012);
+  vec3 deep  = vec3(0.055,0.070,0.115);
+  vec3 warm  = vec3(0.155,0.105,0.048);
+  col = mix(col, deep, smoothstep(0.30,0.85,ink));
+  col = mix(col, warm, smoothstep(0.55,0.98,ink)*0.55);
+
+  // --- volumetric shafts ---
+  float s = shafts(p, src, t);
+  s += shafts(p*1.03 + 0.01, src, t*1.21) * 0.45;
+  vec3 gold = vec3(1.00, 0.745, 0.315);
+  col += gold * s * (0.85 + uPulse*1.3);
+
+  // core glow at the source
+  float d = length(p - src);
+  col += gold * exp(-d*4.2) * 0.30;
+  col += vec3(1.0,0.93,0.80) * exp(-d*13.0) * 0.42;
+
+  // horizon bloom that grows as you scroll
+  float horizon = exp(-abs(uv.y - (0.14 + uScroll*0.2))*7.0);
+  col += vec3(0.22,0.32,0.75) * horizon * 0.10 * (0.4 + uScroll);
+
+  // dust motes
+  vec2 gp = p*vec2(26.0,26.0);
+  vec2 gi = floor(gp);
+  for(int j=-1;j<=1;j++){
+    for(int i=-1;i<=1;i++){
+      vec2 cell = gi + vec2(float(i), float(j));
+      float h = hash(cell);
+      if(h < 0.72) continue;
+      vec2 off = vec2(hash(cell+1.7), hash(cell+9.1));
+      off.y += sin(t*(0.20+h*0.35) + h*30.0)*0.28;
+      off.x += cos(t*(0.14+h*0.22) + h*17.0)*0.20;
+      float dm = length(gp - (cell+off));
+      float tw = 0.55 + 0.45*sin(t*(1.1+h*2.4) + h*40.0);
+      col += gold * (0.0042/(dm*dm+0.0035)) * tw * (0.35 + s*2.2);
+    }
+  }
+
+  // vignette + subtle film curve
+  float vig = smoothstep(1.25, 0.25, length(uv-0.5));
+  col *= 0.42 + 0.58*vig;
+  col = pow(col, vec3(0.92));
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.warn(gl.getShaderInfoLog(s));
+  return s;
+}
+
+let prog, uni = {}, raf;
+if (gl) {
+  prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  ['uRes','uTime','uScroll','uMouse','uPulse'].forEach(n => uni[n] = gl.getUniformLocation(prog, n));
+}
+
+const state = { mx:0.5, my:0.5, tmx:0.5, tmy:0.5, scroll:0, tscroll:0, pulse:0, dpr:1 };
+
+function resize(){
+  state.dpr = Math.min(devicePixelRatio || 1, 1.75) * (SCALE < 1 ? 0.5 : 1);
+  canvas.width  = Math.floor(innerWidth  * state.dpr);
+  canvas.height = Math.floor(innerHeight * state.dpr);
+  canvas.style.width = innerWidth + 'px';
+  canvas.style.height = innerHeight + 'px';
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
+}
+addEventListener('resize', resize);
+resize();
+
+addEventListener('pointermove', e => {
+  state.tmx = e.clientX / innerWidth;
+  state.tmy = 1 - e.clientY / innerHeight;
+}, { passive:true });
+
+addEventListener('scroll', () => {
+  const max = Math.max(1, document.body.scrollHeight - innerHeight);
+  state.tscroll = Math.min(1, scrollY / max);
+}, { passive:true });
+
+window.verselightPulse = () => { state.pulse = 1; };
+
+const t0 = performance.now();
+const tick = limiter(24);
+function frame(){
+  raf = requestAnimationFrame(frame);
+  if (!tick()) return;
+  if (!gl) return;
+  state.mx += (state.tmx - state.mx) * 0.055;
+  state.my += (state.tmy - state.my) * 0.055;
+  state.scroll += (state.tscroll - state.scroll) * 0.07;
+  state.pulse *= 0.955;
+
+  gl.uniform2f(uni.uRes, canvas.width, canvas.height);
+  gl.uniform1f(uni.uTime, (performance.now() - t0) / 1000);
+  gl.uniform1f(uni.uScroll, state.scroll);
+  gl.uniform2f(uni.uMouse, state.mx, state.my);
+  gl.uniform1f(uni.uPulse, state.pulse);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+frame();
+
+/* ---------- animated film grain (2D canvas) ---------- */
+const gc = document.getElementById('grain');
+const g2 = gc.getContext('2d');
+let grainTiles = [];
+function buildGrain(){
+  gc.width = innerWidth; gc.height = innerHeight;
+  grainTiles = [];
+  for (let k = 0; k < 4; k++){
+    const s = 220;
+    const off = document.createElement('canvas');
+    off.width = s; off.height = s;
+    const ctx = off.getContext('2d');
+    const img = ctx.createImageData(s, s);
+    for (let i = 0; i < img.data.length; i += 4){
+      const v = 128 + (Math.random() - 0.5) * 255;
+      img.data[i] = img.data[i+1] = img.data[i+2] = v;
+      img.data[i+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    grainTiles.push(off);
+  }
+}
+addEventListener('resize', buildGrain);
+buildGrain();
+
+let gi = 0;
+setInterval(() => {
+  if (!grainTiles.length) return;
+  gi = (gi + 1) % grainTiles.length;
+  const pat = g2.createPattern(grainTiles[gi], 'repeat');
+  g2.clearRect(0, 0, gc.width, gc.height);
+  g2.fillStyle = pat;
+  g2.save();
+  g2.translate(-Math.random() * 200, -Math.random() * 200);
+  g2.fillRect(0, 0, gc.width + 400, gc.height + 400);
+  g2.restore();
+}, 90);
+
+===== FILE: src/cross.js (20.1 KB) =====
+
+import { SCALE, visible, limiter } from './gate.js';
+/* Verselight — hero centerpiece: raymarched volumetric cross + realistic open book.
+   Camera framed so the full cross always fits. Book rebuilt with real bookbinding:
+   thick page block, cover overhang (squares), rounded spine with headbands,
+   individually curved leaves, ribbon marker, and grounded contact shadow. */
+
+const canvas = document.getElementById('crossgl');
+if (canvas) {
+const gl = canvas.getContext('webgl', { antialias:false, alpha:true, premultipliedAlpha:false });
+
+const VERT = `attribute vec2 p; void main(){ gl_Position=vec4(p,0.,1.); }`;
+
+const FRAG = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform vec2  uMouse;
+uniform float uPulse;
+uniform float uScroll;
+uniform float uAspect;   /* canvas w/h — used to auto-fit the composition */
+uniform float uSteps;    /* march budget: lowered on phones */
+
+#define PI 3.14159265
+
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
+float hash1(float n){ return fract(sin(n)*43758.5453123); }
+float noise(vec3 x){
+  vec3 i=floor(x), f=fract(x); f=f*f*(3.-2.*f);
+  float n=i.x+i.y*57.+113.*i.z;
+  return mix(mix(mix(hash1(n),hash1(n+1.),f.x),mix(hash1(n+57.),hash1(n+58.),f.x),f.y),
+             mix(mix(hash1(n+113.),hash1(n+114.),f.x),mix(hash1(n+170.),hash1(n+171.),f.x),f.y),f.z);
+}
+float fbm3(vec3 p){ float v=0.,a=.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=.5; } return v; }
+mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+/* ---------- SDF primitives ---------- */
+float sdBox(vec3 p, vec3 b){ vec3 d=abs(p)-b; return length(max(d,0.))+min(max(d.x,max(d.y,d.z)),0.); }
+float sdRound(vec3 p, vec3 b, float r){ return sdBox(p,b)-r; }
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r){
+  vec3 pa=p-a, ba=b-a;
+  float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+  return length(pa-ba*h)-r;
+}
+float sdChamfer(vec3 p, vec3 b, float ch){
+  float d = sdBox(p, b);
+  vec3 a = abs(p);
+  float oct = (a.x + a.y + a.z - (b.x + b.y + b.z - ch)) * 0.57735;
+  return max(d, oct);
+}
+
+/* ---------- the cross ---------- */
+float sdCross(vec3 p, out float face){
+  float th = 0.062;
+  vec3 vb = vec3(0.086, 0.540, th);
+  vec3 hb = vec3(0.310, 0.086, th);
+
+  float vert = sdChamfer(p - vec3(0., 0.045, 0.), vb, 0.048);
+  float horz = sdChamfer(p - vec3(0., 0.218, 0.), hb, 0.048);
+  float body = min(vert, horz);
+
+  float iv = sdBox(p - vec3(0., 0.045, 0.), vec3(vb.x-0.027, vb.y-0.027, th+0.02));
+  float ih = sdBox(p - vec3(0., 0.218, 0.), vec3(hb.x-0.027, hb.y-0.027, th+0.02));
+  float groove = max(min(iv,ih), abs(p.z) - (th - 0.011));
+  body = max(body, -groove * 0.92);
+
+  float boss = length((p - vec3(0.,0.218,0.)) * vec3(1., 1., 0.60)) - 0.074;
+  body = min(body, boss);
+
+  face = smoothstep(th - 0.014, th - 0.004, abs(p.z));
+  return body;
+}
+float sdCrossD(vec3 p){ float f; return sdCross(p, f); }
+
+/* ---------- realistic book ----------
+   Coordinates: x = spine(0) → fore-edge, z = head↔tail, y = up.
+   A leaf sags on a curve anchored at the gutter and also droops slightly
+   toward head and tail (real paper is a doubly-curved surface). */
+float leaf(vec3 p, float side, float lift, float curl, float wob, float wid, float hgt, float thick){
+  p.x *= side;
+  float x = max(p.x, 0.0);
+  float u = clamp(x / wid, 0.0, 1.0);
+
+  /* primary sag: flat at spine, steep at fore-edge */
+  float sag = lift * pow(u, 1.55) * 0.60;
+  /* secondary cross-curl toward head/tail so the sheet is doubly curved */
+  float zc = p.z / max(hgt, 1e-3);
+  sag += lift * 0.10 * zc * zc * u;
+  sag += wob * sin(u * 2.6) * 0.040;
+
+  p.y += sag;
+  p.xy = rot(-curl * u) * p.xy;
+
+  /* fore-edge is very slightly convex (paper block rounds outward) */
+  float w = wid * (1.0 - 0.030 * zc * zc);
+  return sdRound(p - vec3(w*0.5, 0., 0.), vec3(w*0.5, thick, hgt), thick*0.9);
+}
+
+float sdBook(vec3 p, float t, out float id){
+  id = 0.;
+  float d = 1e9;
+
+  float W = 0.320;    /* half-leaf width, spine → fore-edge */
+  float Hh = 0.245;   /* half height (head→tail) */
+
+  /* ---- 1. the text block: a genuinely THICK stack of leaves ---- */
+  /* Modelled as a solid wedge (so it reads as hundreds of pages) plus a
+     few resolved top leaves for silhouette. */
+  vec3 bl = p;
+  float blockLift = 0.42;
+  /* solid block: use the same sag surface, extruded downward */
+  {
+    vec3 q = bl;
+    q.x = abs(q.x);
+    float u = clamp(q.x / W, 0., 1.);
+    float sag = blockLift * pow(u, 1.55) * 0.60;
+    float zc = q.z / Hh;
+    sag += blockLift * 0.10 * zc*zc * u;
+    /* thickness grows from spine to fore-edge — the classic open-book wedge */
+    float thick = 0.012 + 0.058 * pow(u, 0.85);
+    vec3 c = vec3(q.x, -sag - thick*0.5, q.z);
+    float dblock = sdRound(q - vec3(c.x, c.y, 0.), vec3(0.0009, thick*0.5, Hh*(1.0-0.03*zc*zc)), 0.004);
+    /* clamp to width */
+    dblock = max(dblock, q.x - W);
+    dblock = max(dblock, -q.x + 0.004);
+    if(dblock < d){ d = dblock; id = 2.; }
+  }
+
+  /* resolved top leaves for crisp edges */
+  for(int i=0;i<3;i++){
+    float fi = float(i);
+    float lf = blockLift - fi*0.020;
+    float s = min(leaf(p - vec3(0., -0.0075*fi, 0.),  1., lf, 0.0, 0.008+fi*0.003, W, Hh, 0.0034),
+                  leaf(p - vec3(0., -0.0075*fi, 0.), -1., lf, 0.0, 0.008+fi*0.003, W, Hh, 0.0034));
+    if(s < d){ d = s; id = 2.; }
+  }
+
+  /* ---- 2. the cover: boards overhang the block on all sides (squares) ---- */
+  vec3 cp = p - vec3(0., -0.052, 0.);
+  float cw = W + 0.020, chh = Hh + 0.018;
+  float board = min(leaf(cp,  1., 0.40, 0.02, 0.0, cw, chh, 0.0125),
+                    leaf(cp, -1., 0.40, 0.02, 0.0, cw, chh, 0.0125));
+  /* rounded spine: a half-cylinder bridging the two boards */
+  vec3 sp = cp - vec3(0., -0.016, 0.);
+  float spine = sdCapsule(sp, vec3(0.,0.,-chh), vec3(0.,0.,chh), 0.030);
+  spine = max(spine, -sp.y - 0.052);            /* trim the top so it tucks under */
+  float cover = min(board, spine);
+  if(cover < d){ d = cover; id = 1.; }
+
+  /* ---- 3. headbands at head & tail of the spine ---- */
+  float hb = min(
+    sdCapsule(sp, vec3(-0.020,0.006, chh-0.006), vec3(0.020,0.006, chh-0.006), 0.0085),
+    sdCapsule(sp, vec3(-0.020,0.006,-chh+0.006), vec3(0.020,0.006,-chh+0.006), 0.0085));
+  if(hb < d){ d = hb; id = 4.; }
+
+  /* ---- 4. the turning leaf ---- */
+  float ph  = fract(t*0.080);
+  float ease = ph*ph*(3.0 - 2.0*ph);
+  float ang = ease * PI;
+  float fl  = sin(ph*PI);
+  vec3 q = p - vec3(0., 0.004, 0.);
+  q.xy = rot(-ang) * q.xy;
+  float turning = leaf(q, -1., blockLift + fl*0.52, fl*0.50, fl*0.09, W, Hh, 0.0030 + fl*0.0012);
+  if(turning < d){ d = turning; id = 3.; }
+
+  /* ---- 5. silk ribbon marker trailing off the fore-edge ---- */
+  vec3 rp = p;
+  float rz = 0.075;
+  vec3 ra = vec3(0.02, -0.010, rz);
+  vec3 rbp = vec3(W*0.82, -0.190 + sin(t*0.9)*0.010, rz + 0.020);
+  float ribbon = sdCapsule(rp, ra, rbp, 0.010);
+  ribbon = max(ribbon, abs(rp.z - rz - (rp.x*0.06)) - 0.019);
+  if(ribbon < d){ d = ribbon; id = 5.; }
+
+  return d;
+}
+
+float map(vec3 p, float t, out float mat){
+  mat = 0.;
+  vec3 bp = p - vec3(0., -0.72 + sin(t*0.52)*0.018, 0.);
+  bp.xz = rot(sin(t*0.17)*0.18) * bp.xz;
+  bp.yz = rot(-0.50) * bp.yz;
+  float pid;
+  float db = sdBook(bp, t, pid);
+
+  vec3 cp = p - vec3(0., 0.42, 0.);
+  cp.xz = rot(t*0.18 + (uMouse.x-0.5)*0.70) * cp.xz;
+  cp.yz = rot((uMouse.y-0.5)*0.18) * cp.yz;
+  float face;
+  float dc = sdCross(cp, face);
+
+  float d = db;
+  mat = pid;
+  if(dc < d){ d = dc; mat = 10.; }
+  return d;
+}
+
+vec3 calcNormal(vec3 p, float t){
+  vec2 e = vec2(0.0011, 0.);
+  float m;
+  return normalize(vec3(
+    map(p+e.xyy,t,m)-map(p-e.xyy,t,m),
+    map(p+e.yxy,t,m)-map(p-e.yxy,t,m),
+    map(p+e.yyx,t,m)-map(p-e.yyx,t,m)));
+}
+
+float softShadow(vec3 ro, vec3 rd, float t){
+  float res=1., h, m;
+  float d=0.025;
+  for(int i=0;i<26;i++){
+    h = map(ro+rd*d, t, m);
+    res = min(res, 10.0*h/d);
+    d += clamp(h, 0.012, 0.09);
+    if(res<0.004 || d>2.4) break;
+  }
+  return clamp(res, 0., 1.);
+}
+
+float ao(vec3 p, vec3 n, float t){
+  float occ=0., sca=1., m;
+  for(int i=0;i<5;i++){
+    float h = 0.010 + 0.080*float(i);
+    occ += (h - map(p + n*h, t, m)) * sca;
+    sca *= 0.72;
+  }
+  return clamp(1.0 - 2.6*occ, 0., 1.);
+}
+
+float aniso(vec3 n, vec3 l, vec3 v, vec3 tang, float rough){
+  vec3 h = normalize(l + v);
+  float dt = dot(tang, h);
+  float nh = dot(n, h);
+  float k = dt / max(rough, 1e-3);
+  return exp(-2.0 * (k*k) / (1.0 + max(nh,0.0))) * max(nh, 0.0);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*uRes) / uRes.y;
+  float t = uTime;
+
+  /* ---- auto-fit framing: pull back on narrow/short canvases so the whole
+     cross + book always fits inside the frame with margin ---- */
+  float fit = clamp(1.28 / max(uAspect, 0.55), 1.0, 2.05);
+  float dist = 2.62 * fit;
+  float fov  = 1.72 / fit;
+
+  vec3 ro = vec3(0., 0.02, dist);
+  ro.xz = rot((uMouse.x-0.5)*0.22) * ro.xz;
+  ro.y += (uMouse.y-0.5)*0.18 + uScroll*0.26;
+  vec3 ta = vec3(0., -0.13, 0.);
+  vec3 fw = normalize(ta-ro), rt = normalize(cross(vec3(0,1,0), fw)), up = cross(fw, rt);
+  vec3 rd = normalize(uv.x*rt + uv.y*up + fov*fw);
+
+  vec3 gold     = vec3(1.00, 0.755, 0.315);
+  vec3 goldDeep = vec3(0.46, 0.275, 0.070);
+  vec3 goldLite = vec3(1.00, 0.930, 0.760);
+  vec3 col = vec3(0.);
+  float alpha = 0.;
+
+  float d = 0., m = 0., hit = -1.;
+  for(int i=0;i<108;i++){
+    if(float(i) > uSteps) break;
+    vec3 p = ro + rd*d;
+    float h = map(p, t, m);
+    if(h < 0.0014){ hit = d; break; }
+    d += h*0.90;
+    if(d > 7.0) break;
+  }
+
+  vec3 keyDir  = normalize(vec3(-0.42, 0.86, 0.44));
+  vec3 rimDir  = normalize(vec3( 0.70, 0.20,-0.62));
+  vec3 fillDir = normalize(vec3( 0.35,-0.55, 0.60));
+
+  vec3 base = vec3(0.);
+  if(hit > 0.){
+    vec3 p = ro + rd*hit;
+    vec3 n = calcNormal(p, t);
+    float mm; map(p,t,mm);
+    float occ = ao(p, n, t);
+    float sh  = softShadow(p + n*0.011, keyDir, t);
+
+    float dif  = clamp(dot(n, keyDir), 0., 1.);
+    float rimL = clamp(dot(n, rimDir), 0., 1.);
+    float fres = pow(1.0 - clamp(dot(n, -rd), 0., 1.), 3.2);
+    float spe  = pow(clamp(dot(reflect(-keyDir, n), -rd), 0., 1.), 62.0);
+    float fill = clamp(0.5 + 0.5*dot(n, fillDir), 0., 1.);
+
+    /* book-local coordinates for texturing */
+    vec3 bq = p - vec3(0., -0.72, 0.);
+    bq.yz = rot(0.50) * bq.yz;
+    bq.xz = rot(-sin(t*0.17)*0.18) * bq.xz;
+
+    if(mm > 5.){
+      /* ---- the cross: forged gold, brushed vertically ---- */
+      vec3 cq = p - vec3(0., 0.42, 0.);
+      cq.xz = rot(t*0.18 + (uMouse.x-0.5)*0.70) * cq.xz;
+      cq.yz = rot((uMouse.y-0.5)*0.18) * cq.yz;
+
+      float grain = fbm3(cq*vec3(46.0, 7.0, 46.0));
+      float patina = fbm3(cq*4.2 + 11.0);
+      base = mix(goldDeep, gold, 0.44 + 0.42*grain + 0.20*patina);
+
+      vec3 tang = normalize(cross(n, vec3(0.,1.,0.)));
+      float an = aniso(n, keyDir, -rd, tang, 0.16);
+
+      col  = base * (0.16 + 1.28*dif*mix(0.35, 1.0, sh));
+      col += goldLite * an   * (1.25 + uPulse*2.0);
+      col += goldLite * spe  * (0.85 + uPulse*1.4);
+      col += gold     * rimL * 0.55;
+      col += goldLite * fres * 0.42;
+      col *= 0.30 + 0.70*occ;
+      col += gold * 0.115;
+
+    } else if(mm > 4.5){
+      /* ---- silk ribbon marker ---- */
+      float weave = fbm3(p*180.0);
+      base = mix(vec3(0.42,0.055,0.055), vec3(0.66,0.13,0.11), weave);
+      col  = base * (0.28 + 1.05*dif*mix(0.5,1.0,sh));
+      col += vec3(1.0,0.65,0.55) * pow(clamp(dot(-n,keyDir),0.,1.),1.4) * 0.35;
+      col += vec3(1.0,0.85,0.80) * spe * 0.30;
+      col *= 0.42 + 0.58*occ;
+
+    } else if(mm > 3.5){
+      /* ---- headbands: striped silk ---- */
+      float stripe = step(0.5, fract(bq.x*90.0));
+      base = mix(vec3(0.72,0.60,0.34), vec3(0.30,0.10,0.09), stripe);
+      col  = base * (0.30 + 1.0*dif*sh);
+      col += goldLite * spe * 0.35;
+      col *= 0.45 + 0.55*occ;
+
+    } else if(mm > 2.5){
+      /* ---- the turning leaf: backlit vellum with visible fibre + faint type ---- */
+      float trans = pow(clamp(dot(-n, keyDir),0.,1.), 1.20);
+      float fibre = fbm3(p*vec3(190.0, 40.0, 190.0));
+      float mottle = fbm3(p*13.0 + 2.0);
+      base = mix(vec3(0.955,0.930,0.868), vec3(0.995,0.982,0.955), fibre*0.5 + mottle*0.5);
+
+      /* show-through of type from the other side */
+      float row  = fract(bq.z*46.0);
+      float line = smoothstep(0.62,0.46,row)*smoothstep(0.05,0.19,row);
+      float word = step(0.32, hash(floor(bq.zx*vec2(46.0, 27.0))));
+      base = mix(base, vec3(0.55,0.50,0.44), line*word*0.16);
+
+      col  = base * (0.30 + 0.88*dif*mix(0.62,1.0,sh));
+      col += vec3(1.00,0.90,0.72) * trans * (0.90 + 0.30*fibre);
+      col += vec3(1.0,0.97,0.90) * fres * 0.46;
+      col += goldLite * spe * 0.16;
+      col *= 0.50 + 0.50*occ;
+
+    } else if(mm > 1.5){
+      /* ---- the page block: printed type, gutter shadow, laminated edge ---- */
+      float u = abs(bq.x);
+      float zc = bq.z;
+
+      /* two-column-free single measure of ruled type */
+      float row  = fract(zc*46.0);
+      float line = smoothstep(0.62, 0.46, row) * smoothstep(0.05, 0.19, row);
+      float wcell = hash(floor(vec2(zc*46.0, u*30.0)));
+      float word = step(0.28, wcell);
+      float body = step(0.085, u) * step(u, 0.272) * step(abs(zc), 0.205);
+      float ink  = line * word * body;
+
+      /* paper: warm, slightly foxed */
+      float fox = fbm3(bq*9.0 + 5.0);
+      base = mix(vec3(0.950,0.925,0.858), vec3(0.905,0.868,0.788), fox*0.55);
+      base = mix(base, vec3(0.155,0.130,0.108), ink*0.80);
+
+      /* verse numbers: tiny gold ticks at line starts */
+      float tick = step(0.088, u)*step(u,0.104)*line*step(0.55, hash(floor(vec2(zc*46.0, 3.0))));
+      base = mix(base, gold*0.85, tick*0.7);
+
+      /* rubricated initial */
+      float initial = smoothstep(0.042, 0.0, length(vec2(u-0.140, zc+0.150))-0.028);
+      base = mix(base, vec3(0.60,0.13,0.10), initial*0.85);
+
+      /* running head rule */
+      float rule = smoothstep(0.0022,0.0, abs(zc + 0.222)) * step(0.085,u)*step(u,0.272);
+      base = mix(base, vec3(0.45,0.38,0.30), rule*0.5);
+
+      /* deep gutter shadow near the spine — the key realism cue */
+      float gutter = exp(-u*11.0);
+      base *= 1.0 - gutter*0.62;
+
+      /* laminated leaf striations on the visible fore-edge stack */
+      float striate = 0.5 + 0.5*sin(bq.y*760.0);
+      float edgeMask = smoothstep(0.255, 0.315, u);
+      base = mix(base, mix(vec3(0.86,0.82,0.74), gold*1.02, 0.45) * (0.75 + 0.25*striate), edgeMask*0.85);
+
+      /* gilt head/tail edges */
+      float gilt = smoothstep(0.200, 0.238, abs(zc));
+      base = mix(base, gold*1.05, gilt*0.60);
+
+      col  = base * (0.24 + 0.94*dif*mix(0.46,1.0,sh));
+      col += goldLite * spe * 0.18;
+      col += gold * fres * 0.20;
+      col *= 0.34 + 0.66*occ;
+
+    } else {
+      /* ---- leather boards: pebble grain, blind tooling, worn corners ---- */
+      float pebble = fbm3(bq*86.0);
+      float grainL = fbm3(bq*vec3(210.0, 60.0, 210.0));
+      float scuff  = fbm3(bq*7.0 + 3.0);
+      base = mix(vec3(0.055,0.030,0.026), vec3(0.165,0.098,0.064), pebble*0.62 + grainL*0.22 + scuff*0.30);
+
+      /* wear highlights along the raised grain */
+      base += vec3(0.10,0.065,0.038) * smoothstep(0.62,0.92,pebble) * 0.7;
+
+      /* blind-tooled double gold fillet border */
+      float bx = abs(bq.x), bz = abs(bq.z);
+      float f1 = smoothstep(0.0075,0.0018, abs(bx-0.292)) * step(bz,0.242);
+      float f2 = smoothstep(0.0075,0.0018, abs(bx-0.272)) * step(bz,0.226);
+      float f3 = smoothstep(0.0075,0.0018, abs(bz-0.238)) * step(bx,0.298);
+      float tool = clamp(f1+f2*0.7+f3, 0., 1.);
+      base = mix(base, gold*0.92, tool*0.62);
+
+      /* corner fleurons */
+      float fl = smoothstep(0.030,0.0, length(vec2(bx-0.262, bz-0.208))-0.012);
+      base = mix(base, gold*0.95, fl*0.55);
+
+      vec3 tang = normalize(cross(n, vec3(0.,1.,0.)));
+      col  = base * (0.20 + 0.82*dif*sh);
+      col += goldLite * aniso(n, keyDir, -rd, tang, 0.30) * 0.20;
+      col += gold * rimL * 0.38;
+      col += goldLite * fres * 0.28;
+      col += goldLite * spe * 0.14;
+      col *= 0.34 + 0.66*occ;
+    }
+    col += fill * base * 0.085;
+    alpha = 1.0;
+  }
+
+  /* ---------- volumetric halo + shafts around the cross ---------- */
+  vec3 crossC = vec3(0., 0.42, 0.);
+  float glow = 0., rays = 0.;
+  for(int i=0;i<42;i++){
+    float fi = float(i);
+    float sd = 0.35 + fi*0.056;
+    if(hit > 0. && sd > hit) break;
+    vec3 p = ro + rd*sd;
+    vec3 q = p - crossC;
+    q.xz = rot(t*0.18 + (uMouse.x-0.5)*0.70) * q.xz;
+    q.yz = rot((uMouse.y-0.5)*0.18) * q.yz;
+    float dc = sdCrossD(q);
+    glow += exp(-dc*10.5) * 0.028;
+    float ang = atan(q.y, q.x);
+    float turb = 0.35 + 0.65*noise(vec3(ang*5.0, sd*1.1, t*0.26));
+    rays += exp(-dc*2.2) * turb * 0.0145;
+  }
+  col += gold * glow * (1.45 + uPulse*2.4);
+  col += goldLite * rays * (0.80 + uPulse*1.7);
+  alpha = max(alpha, clamp(glow*2.3 + rays*1.5, 0., 1.));
+
+  /* ---------- drifting motes ---------- */
+  vec2 gp = uv*9.0;
+  vec2 gi2 = floor(gp);
+  for(int j=-1;j<=1;j++){
+    for(int i=-1;i<=1;i++){
+      vec2 cell = gi2 + vec2(float(i), float(j));
+      float h = hash(cell);
+      if(h < 0.56) continue;
+      vec2 off = vec2(hash(cell+3.1) + sin(t*(0.25+h*0.4)+h*20.0)*0.10,
+                      fract(hash(cell+7.7) + t*(0.018+h*0.045)));
+      float dm = length(gp - (cell+off));
+      float tw = 0.45 + 0.55*sin(t*(0.9+h*2.2) + h*40.0);
+      float m2 = 0.00048/(dm*dm+0.00042) * tw;
+      col += goldLite * m2;
+      alpha = max(alpha, clamp(m2*1.4,0.,1.));
+    }
+  }
+
+  /* contact shadow beneath the book */
+  float shadowPool = exp(-pow(length((uv - vec2(0.0,-0.86))*vec2(0.95,2.8)), 1.5)*4.2);
+  col *= 1.0 - shadowPool*0.34;
+
+  float pool = exp(-length((uv - vec2(0.0,-0.60))*vec2(1.0,1.5))*4.6);
+  col += gold * pool * 0.10;
+  alpha = max(alpha, pool*0.24);
+
+  col = pow(max(col,0.), vec3(0.90));
+  gl_FragColor = vec4(col, alpha);
+}
+`;
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.warn('cross:', gl.getShaderInfoLog(s));
+  return s;
+}
+
+let uni = {};
+if (gl) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  ['uRes','uTime','uMouse','uPulse','uScroll','uAspect','uSteps'].forEach(n => uni[n] = gl.getUniformLocation(prog, n));
+}
+
+const st = { mx:.5, my:.5, tmx:.5, tmy:.5, pulse:0, scroll:0, tscroll:0, visible:true };
+
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, 1.5) * SCALE * (SCALE < 1 ? 0.7 : 1);
+  const r = canvas.getBoundingClientRect();
+  const w = Math.max(1, Math.floor(r.width * dpr));
+  const h = Math.max(1, Math.floor(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== h){
+    canvas.width = w; canvas.height = h;
+    if (gl) gl.viewport(0, 0, w, h);
+  }
+}
+addEventListener('resize', resize);
+setTimeout(resize, 0);
+
+addEventListener('pointermove', e => {
+  st.tmx = e.clientX / innerWidth;
+  st.tmy = 1 - e.clientY / innerHeight;
+}, { passive:true });
+
+addEventListener('scroll', () => {
+  const r = canvas.getBoundingClientRect();
+  st.visible = r.bottom > -100 && r.top < innerHeight + 100;
+  st.tscroll = Math.min(1, Math.max(0, -r.top / innerHeight));
+}, { passive:true });
+
+const prevPulse = window.verselightPulse;
+window.verselightPulse = () => {
+  st.pulse = 1;
+  if (typeof prevPulse === 'function') prevPulse();
+};
+
+const t0 = performance.now();
+const vis = visible(canvas);
+const tick = limiter(24);
+function frame(){
+  requestAnimationFrame(frame);
+  if (!vis.on || !tick()) return;
+  if (!gl || !st.visible) return;
+  resize();
+  st.mx += (st.tmx - st.mx) * 0.06;
+  st.my += (st.tmy - st.my) * 0.06;
+  st.scroll += (st.tscroll - st.scroll) * 0.08;
+  st.pulse *= 0.95;
+
+  gl.uniform2f(uni.uRes, canvas.width, canvas.height);
+  gl.uniform1f(uni.uTime, (performance.now() - t0) / 1000);
+  gl.uniform2f(uni.uMouse, st.mx, st.my);
+  gl.uniform1f(uni.uPulse, st.pulse);
+  gl.uniform1f(uni.uScroll, st.scroll);
+  gl.uniform1f(uni.uAspect, canvas.width / Math.max(1, canvas.height));
+  gl.uniform1f(uni.uSteps, SCALE < 1 ? 46.0 : 108.0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+frame();
+}
+
+===== FILE: src/plate.js (14.7 KB) =====
+
+import { SCALE, visible, limiter } from './gate.js';
+/* Verselight — illuminated plate: flowing gold-leaf filigree + a realistic codex. */
+
+/* ---------- 1. filigree backdrop (2D canvas, flow-field gold threads) ---------- */
+(function(){
+  const c = document.getElementById('plategl');
+  if(!c) return;
+  const x = c.getContext('2d');
+  let W=0, H=0, dpr=1, particles=[], t=0;
+
+  function hash(a,b){ const s=Math.sin(a*127.1+b*311.7)*43758.5453; return s-Math.floor(s); }
+  function noise(px,py){
+    const ix=Math.floor(px), iy=Math.floor(py), fx=px-ix, fy=py-iy;
+    const u=fx*fx*(3-2*fx), v=fy*fy*(3-2*fy);
+    return (hash(ix,iy)*(1-u)+hash(ix+1,iy)*u)*(1-v) + (hash(ix,iy+1)*(1-u)+hash(ix+1,iy+1)*u)*v;
+  }
+
+  function seed(){
+    particles = [];
+    const n = Math.min(220, Math.floor(W*H/9000));
+    for(let i=0;i<n;i++) particles.push({
+      x: Math.random()*W, y: Math.random()*H,
+      life: Math.random()*260, max: 180+Math.random()*220,
+      w: 0.35+Math.random()*1.05
+    });
+  }
+
+  function resize(){
+    dpr = Math.min(devicePixelRatio||1, 1.6) * SCALE;
+    const r = c.getBoundingClientRect();
+    W = Math.max(1, Math.floor(r.width*dpr));
+    H = Math.max(1, Math.floor(r.height*dpr));
+    if(c.width!==W||c.height!==H){ c.width=W; c.height=H; seed(); x.clearRect(0,0,W,H); }
+  }
+  addEventListener('resize', resize);
+  setTimeout(resize,0);
+
+  const vis = visible(c);
+  const tick = limiter(24);
+  function frame(){
+    requestAnimationFrame(frame);
+    if (!vis.on || !tick()) return;
+    resize();
+    if(!W||!H) return;
+    const r = c.getBoundingClientRect();
+    if(r.bottom < -200 || r.top > innerHeight+200) return;
+
+    t += 0.0032;
+    x.fillStyle = 'rgba(9,10,15,0.045)';
+    x.fillRect(0,0,W,H);
+    x.globalCompositeOperation = 'lighter';
+
+    for(const p of particles){
+      const nx = noise(p.x*0.0022 + t*2.2, p.y*0.0022);
+      const ny = noise(p.x*0.0022 + 31.7, p.y*0.0022 - t*1.6);
+      const ang = (nx-0.5)*Math.PI*2.6 + (ny-0.5)*Math.PI*1.4;
+      const sp = 0.7*dpr;
+      const px = p.x, py = p.y;
+      p.x += Math.cos(ang)*sp;
+      p.y += Math.sin(ang)*sp - 0.16*dpr;
+      p.life++;
+
+      const fade = Math.sin(Math.min(1,p.life/p.max)*Math.PI);
+      x.strokeStyle = `rgba(217,164,65,${0.055*fade})`;
+      x.lineWidth = p.w*dpr;
+      x.beginPath(); x.moveTo(px,py); x.lineTo(p.x,p.y); x.stroke();
+
+      if(p.life>p.max || p.x<-20||p.x>W+20||p.y<-20||p.y>H+20){
+        p.x = Math.random()*W; p.y = H*0.55 + Math.random()*H*0.6;
+        p.life = 0; p.max = 180+Math.random()*220;
+      }
+    }
+    x.globalCompositeOperation = 'source-over';
+  }
+  frame();
+})();
+
+/* ---------- 2. the codex: realistic raymarched book ---------- */
+(function(){
+  const canvas = document.getElementById('bookgl');
+  if(!canvas) return;
+  const gl = canvas.getContext('webgl', { antialias:false, alpha:true, premultipliedAlpha:false });
+  if(!gl) return;
+
+  const VERT = `attribute vec2 p; void main(){ gl_Position=vec4(p,0.,1.); }`;
+  const FRAG = `
+precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform vec2 uMouse; uniform float uPulse; uniform float uAspect;
+#define PI 3.14159265
+float h1(float n){ return fract(sin(n)*43758.5453123); }
+float h2(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec3 x){
+  vec3 i=floor(x), f=fract(x); f=f*f*(3.-2.*f);
+  float n=i.x+i.y*57.+113.*i.z;
+  return mix(mix(mix(h1(n),h1(n+1.),f.x),mix(h1(n+57.),h1(n+58.),f.x),f.y),
+             mix(mix(h1(n+113.),h1(n+114.),f.x),mix(h1(n+170.),h1(n+171.),f.x),f.y),f.z);
+}
+float fbm(vec3 p){ float v=0.,a=.5; for(int i=0;i<4;i++){v+=a*noise(p);p*=2.05;a*=.5;} return v; }
+mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+float sdBox(vec3 p, vec3 b){ vec3 d=abs(p)-b; return length(max(d,0.))+min(max(d.x,max(d.y,d.z)),0.); }
+float sdR(vec3 p, vec3 b, float r){ return sdBox(p,b)-r; }
+float sdCap(vec3 p, vec3 a, vec3 b, float r){
+  vec3 pa=p-a, ba=b-a;
+  float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+  return length(pa-ba*h)-r;
+}
+
+float leaf(vec3 p, float side, float lift, float curl, float wob, float wid, float hgt, float th){
+  p.x *= side;
+  float x = max(p.x, 0.0);
+  float u = clamp(x/wid, 0., 1.);
+  float zc = p.z/max(hgt,1e-3);
+  float sag = lift*pow(u,1.55)*0.60 + lift*0.10*zc*zc*u + wob*sin(u*2.6)*0.040;
+  p.y += sag;
+  p.xy = rot(-curl*u)*p.xy;
+  float w = wid*(1.0 - 0.030*zc*zc);
+  return sdR(p - vec3(w*0.5,0.,0.), vec3(w*0.5, th, hgt), th*0.9);
+}
+
+float mapBook(vec3 p, float t, out float id){
+  id=0.; float d=1e9;
+  float W=0.330, Hh=0.258, lift=0.40;
+
+  /* solid wedge page block */
+  {
+    vec3 q=p; q.x=abs(q.x);
+    float u=clamp(q.x/W,0.,1.);
+    float zc=q.z/Hh;
+    float sag=lift*pow(u,1.55)*0.60 + lift*0.10*zc*zc*u;
+    float th=0.012 + 0.060*pow(u,0.85);
+    float db=sdR(q - vec3(q.x, -sag-th*0.5, 0.), vec3(0.0009, th*0.5, Hh*(1.0-0.03*zc*zc)), 0.004);
+    db=max(db, q.x-W); db=max(db, -q.x+0.004);
+    if(db<d){ d=db; id=2.; }
+  }
+
+  for(int i=0;i<3;i++){
+    float fi=float(i);
+    float s=min(leaf(p-vec3(0.,-0.0075*fi,0.), 1., lift-fi*0.020, 0.0, 0.008+fi*0.003, W, Hh, 0.0034),
+                leaf(p-vec3(0.,-0.0075*fi,0.),-1., lift-fi*0.020, 0.0, 0.008+fi*0.003, W, Hh, 0.0034));
+    if(s<d){ d=s; id=2.; }
+  }
+
+  /* cover with overhang */
+  vec3 cp=p-vec3(0.,-0.052,0.);
+  float cw=W+0.020, chh=Hh+0.018;
+  float board=min(leaf(cp, 1., 0.38, 0.02, 0.0, cw, chh, 0.0125),
+                  leaf(cp,-1., 0.38, 0.02, 0.0, cw, chh, 0.0125));
+  vec3 sp=cp-vec3(0.,-0.016,0.);
+  float spine=sdCap(sp, vec3(0.,0.,-chh), vec3(0.,0.,chh), 0.030);
+  spine=max(spine, -sp.y-0.052);
+  float cov=min(board,spine);
+  if(cov<d){ d=cov; id=1.; }
+
+  /* headbands */
+  float hb=min(sdCap(sp, vec3(-0.020,0.006, chh-0.006), vec3(0.020,0.006, chh-0.006), 0.0085),
+               sdCap(sp, vec3(-0.020,0.006,-chh+0.006), vec3(0.020,0.006,-chh+0.006), 0.0085));
+  if(hb<d){ d=hb; id=4.; }
+
+  /* turning leaf */
+  float ph=fract(t*0.095);
+  float ease=ph*ph*(3.-2.*ph);
+  float fl=sin(ph*PI);
+  vec3 q=p-vec3(0.,0.004,0.);
+  q.xy=rot(-ease*PI)*q.xy;
+  float tp=leaf(q,-1., lift+fl*0.52, fl*0.50, fl*0.09, W, Hh, 0.0030+fl*0.0012);
+  if(tp<d){ d=tp; id=3.; }
+
+  /* ribbon */
+  float rz=0.078;
+  float rib=sdCap(p, vec3(0.02,-0.010,rz), vec3(W*0.82,-0.195+sin(t*0.9)*0.010, rz+0.020), 0.010);
+  rib=max(rib, abs(p.z-rz-(p.x*0.06))-0.019);
+  if(rib<d){ d=rib; id=5.; }
+
+  return d;
+}
+
+float mapAll(vec3 p, float t, out float id){
+  vec3 bp = p - vec3(0., -0.02 + sin(t*0.6)*0.020, 0.);
+  bp.xz = rot(0.28 + sin(t*0.20)*0.28 + (uMouse.x-0.5)*0.50) * bp.xz;
+  bp.yz = rot(-0.54 + (uMouse.y-0.5)*0.16) * bp.yz;
+  return mapBook(bp, t, id);
+}
+
+float aniso(vec3 n, vec3 l, vec3 v, vec3 tang, float rough){
+  vec3 h=normalize(l+v);
+  float dt=dot(tang,h), nh=dot(n,h);
+  float k=dt/max(rough,1e-3);
+  return exp(-2.0*(k*k)/(1.0+max(nh,0.0)))*max(nh,0.0);
+}
+
+vec3 nrm(vec3 p, float t){ vec2 e=vec2(0.0013,0.); float m;
+  return normalize(vec3(mapAll(p+e.xyy,t,m)-mapAll(p-e.xyy,t,m),
+                        mapAll(p+e.yxy,t,m)-mapAll(p-e.yxy,t,m),
+                        mapAll(p+e.yyx,t,m)-mapAll(p-e.yyx,t,m))); }
+float sha(vec3 ro, vec3 rd, float t){ float res=1.,m,d=0.03;
+  for(int i=0;i<22;i++){ float h=mapAll(ro+rd*d,t,m); res=min(res,8.5*h/d); d+=clamp(h,0.012,0.09); if(res<0.005||d>1.9)break; }
+  return clamp(res,0.,1.); }
+float occf(vec3 p, vec3 n, float t){ float o=0.,s=1.,m;
+  for(int i=0;i<5;i++){ float h=0.012+0.080*float(i); o+=(h-mapAll(p+n*h,t,m))*s; s*=0.72; }
+  return clamp(1.-2.4*o,0.,1.); }
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy-0.5*uRes)/uRes.y;
+  float t=uTime;
+
+  float fit = clamp(1.05/max(uAspect,0.60), 1.0, 1.75);
+  vec3 ro=vec3(0., 0.34*fit, 1.70*fit);
+  vec3 ta=vec3(0.,-0.05,0.);
+  vec3 fw=normalize(ta-ro), rt=normalize(cross(vec3(0,1,0),fw)), up=cross(fw,rt);
+  vec3 rd=normalize(uv.x*rt+uv.y*up+(1.85/fit)*fw);
+
+  vec3 gold=vec3(1.,0.755,0.315), lite=vec3(1.,0.93,0.76);
+  vec3 col=vec3(0.); float alpha=0.;
+  float d=0., m=0., hit=-1.;
+  for(int i=0;i<92;i++){
+    vec3 p=ro+rd*d; float hh=mapAll(p,t,m);
+    if(hh<0.0015){ hit=d; break; }
+    d+=hh*0.90; if(d>5.) break;
+  }
+  vec3 key=normalize(vec3(-0.35,0.92,0.40));
+  vec3 rimD=normalize(vec3(0.68,0.18,-0.62));
+
+  if(hit>0.){
+    vec3 p=ro+rd*hit, n=nrm(p,t); float mm; mapAll(p,t,mm);
+    float o=occf(p,n,t), sh=sha(p+n*0.011,key,t);
+    float dif=clamp(dot(n,key),0.,1.);
+    float rimL=clamp(dot(n,rimD),0.,1.);
+    float fres=pow(1.-clamp(dot(n,-rd),0.,1.),3.2);
+    float spe=pow(clamp(dot(reflect(-key,n),-rd),0.,1.),58.);
+
+    vec3 bq = p - vec3(0.,-0.02,0.);
+    bq.yz = rot(0.54)*bq.yz;
+    bq.xz = rot(-(0.28+sin(t*0.20)*0.28))*bq.xz;
+
+    vec3 base=vec3(0.);
+    if(mm>4.5){
+      float weave=fbm(p*180.);
+      base=mix(vec3(0.42,0.055,0.055), vec3(0.66,0.13,0.11), weave);
+      col=base*(0.28+1.05*dif*mix(0.5,1.,sh));
+      col+=vec3(1.,0.65,0.55)*pow(clamp(dot(-n,key),0.,1.),1.4)*0.35;
+      col+=vec3(1.,0.85,0.80)*spe*0.30;
+      col*=0.42+0.58*o;
+    } else if(mm>3.5){
+      float stripe=step(0.5, fract(bq.x*90.));
+      base=mix(vec3(0.72,0.60,0.34), vec3(0.30,0.10,0.09), stripe);
+      col=base*(0.30+1.0*dif*sh);
+      col+=lite*spe*0.35; col*=0.45+0.55*o;
+    } else if(mm>2.5){
+      float trans=pow(clamp(dot(-n,key),0.,1.),1.20);
+      float fibre=fbm(p*vec3(190.,40.,190.));
+      float mottle=fbm(p*13.+2.);
+      base=mix(vec3(0.955,0.930,0.868), vec3(0.995,0.982,0.955), fibre*0.5+mottle*0.5);
+      float row=fract(bq.z*46.);
+      float line=smoothstep(0.62,0.46,row)*smoothstep(0.05,0.19,row);
+      float word=step(0.32,h2(floor(bq.zx*vec2(46.,27.))));
+      base=mix(base, vec3(0.55,0.50,0.44), line*word*0.16);
+      col=base*(0.30+0.88*dif*mix(0.62,1.,sh));
+      col+=vec3(1.,0.90,0.72)*trans*(0.90+0.30*fibre);
+      col+=vec3(1.,.97,.90)*fres*0.46;
+      col+=lite*spe*0.16;
+      col*=0.50+0.50*o;
+    } else if(mm>1.5){
+      float u=abs(bq.x), zc=bq.z;
+      float row=fract(zc*46.);
+      float line=smoothstep(0.62,0.46,row)*smoothstep(0.05,0.19,row);
+      float word=step(0.28, h2(floor(vec2(zc*46., u*30.))));
+      float body=step(0.085,u)*step(u,0.282)*step(abs(zc),0.215);
+      float ink=line*word*body;
+      float fox=fbm(bq*9.+5.);
+      base=mix(vec3(0.950,0.925,0.858), vec3(0.905,0.868,0.788), fox*0.55);
+      base=mix(base, vec3(0.155,0.130,0.108), ink*0.80);
+      float tick=step(0.088,u)*step(u,0.104)*line*step(0.55,h2(floor(vec2(zc*46.,3.))));
+      base=mix(base, gold*0.85, tick*0.7);
+      float initial=smoothstep(0.042,0., length(vec2(u-0.145, zc+0.158))-0.028);
+      base=mix(base, vec3(0.60,0.13,0.10), initial*0.85);
+      float rule=smoothstep(0.0022,0., abs(zc+0.232))*step(0.085,u)*step(u,0.282);
+      base=mix(base, vec3(0.45,0.38,0.30), rule*0.5);
+      float gutter=exp(-u*11.);
+      base*=1.-gutter*0.62;
+      float striate=0.5+0.5*sin(bq.y*760.);
+      float edgeMask=smoothstep(0.264,0.325,u);
+      base=mix(base, mix(vec3(0.86,0.82,0.74), gold*1.02, 0.45)*(0.75+0.25*striate), edgeMask*0.85);
+      float gilt=smoothstep(0.210,0.248,abs(zc));
+      base=mix(base, gold*1.05, gilt*0.60);
+      col=base*(0.24+0.94*dif*mix(0.46,1.,sh));
+      col+=lite*spe*0.18; col+=gold*fres*0.20; col*=0.34+0.66*o;
+    } else {
+      float pebble=fbm(bq*86.), grainL=fbm(bq*vec3(210.,60.,210.)), scuff=fbm(bq*7.+3.);
+      base=mix(vec3(0.055,0.030,0.026), vec3(0.165,0.098,0.064), pebble*0.62+grainL*0.22+scuff*0.30);
+      base+=vec3(0.10,0.065,0.038)*smoothstep(0.62,0.92,pebble)*0.7;
+      float bx=abs(bq.x), bz=abs(bq.z);
+      float f1=smoothstep(0.0075,0.0018, abs(bx-0.302))*step(bz,0.252);
+      float f2=smoothstep(0.0075,0.0018, abs(bx-0.282))*step(bz,0.236);
+      float f3=smoothstep(0.0075,0.0018, abs(bz-0.248))*step(bx,0.308);
+      base=mix(base, gold*0.92, clamp(f1+f2*0.7+f3,0.,1.)*0.62);
+      float flr=smoothstep(0.030,0., length(vec2(bx-0.272, bz-0.218))-0.012);
+      base=mix(base, gold*0.95, flr*0.55);
+      vec3 tang=normalize(cross(n,vec3(0.,1.,0.)));
+      col=base*(0.20+0.82*dif*sh);
+      col+=lite*aniso(n,key,-rd,tang,0.30)*0.20;
+      col+=gold*rimL*0.38; col+=lite*fres*0.28; col+=lite*spe*0.14;
+      col*=0.34+0.66*o;
+    }
+    alpha=1.;
+  }
+
+  float halo=exp(-length(uv-vec2(0.,0.0))*3.1);
+  col+=gold*halo*0.15*(1.+uPulse*1.5);
+  alpha=max(alpha, halo*0.34);
+
+  float shadowPool=exp(-pow(length((uv-vec2(0.,-0.44))*vec2(0.95,2.9)),1.5)*4.2);
+  col*=1.-shadowPool*0.30;
+
+  vec2 gp=uv*10.; vec2 gi=floor(gp);
+  for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){
+    vec2 cl=gi+vec2(float(i),float(j));
+    float hh=h2(cl); if(hh<0.62) continue;
+    vec2 off=vec2(h2(cl+2.3), fract(h2(cl+6.1)+t*(0.03+hh*0.05)));
+    float dm=length(gp-(cl+off));
+    float tw=0.5+0.5*sin(t*(1.+hh*2.)+hh*40.);
+    float mo=0.00045/(dm*dm+0.0004)*tw;
+    col+=lite*mo; alpha=max(alpha,clamp(mo*1.3,0.,1.));
+  }
+
+  col=pow(max(col,0.),vec3(0.90));
+  gl_FragColor=vec4(col,alpha);
+}
+`;
+  function cs(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.warn('plate:',gl.getShaderInfoLog(s)); return s; }
+
+  const prog=gl.createProgram();
+  gl.attachShader(prog,cs(gl.VERTEX_SHADER,VERT));
+  gl.attachShader(prog,cs(gl.FRAGMENT_SHADER,FRAG));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U={}; ['uRes','uTime','uMouse','uPulse','uAspect'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+  const st={mx:.5,my:.5,tmx:.5,tmy:.5,pulse:0,vis:true};
+  function resize(){
+    const dpr=Math.min(devicePixelRatio||1,1.5) * SCALE;
+    const r=canvas.getBoundingClientRect();
+    const w=Math.max(1,Math.floor(r.width*dpr)), h=Math.max(1,Math.floor(r.height*dpr));
+    if(canvas.width!==w||canvas.height!==h){ canvas.width=w; canvas.height=h; gl.viewport(0,0,w,h); }
+    st.vis = r.bottom>-200 && r.top<innerHeight+200;
+  }
+  addEventListener('resize',resize); setTimeout(resize,0);
+  addEventListener('pointermove',e=>{ st.tmx=e.clientX/innerWidth; st.tmy=1-e.clientY/innerHeight; },{passive:true});
+
+  const prev=window.verselightPulse;
+  window.verselightPulse=()=>{ st.pulse=1; if(typeof prev==='function') prev(); };
+
+  const t0=performance.now();
+  const tickBook = limiter(24);
+  (function loop(){
+    requestAnimationFrame(loop);
+    resize();
+    if(!st.vis || !tickBook()) return;
+    st.mx+=(st.tmx-st.mx)*0.06; st.my+=(st.tmy-st.my)*0.06; st.pulse*=0.95;
+    gl.uniform2f(U.uRes,canvas.width,canvas.height);
+    gl.uniform1f(U.uTime,(performance.now()-t0)/1000);
+    gl.uniform2f(U.uMouse,st.mx,st.my);
+    gl.uniform1f(U.uPulse,st.pulse);
+    gl.uniform1f(U.uAspect, canvas.width/Math.max(1,canvas.height));
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  })();
+})();
